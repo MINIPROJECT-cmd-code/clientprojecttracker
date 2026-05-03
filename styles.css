@@ -272,7 +272,7 @@ button:active {
 }
 
 .user-profile span {
-  color: #dbeafe;
+  color: var(--muted);
   font-size: 12px;
   overflow-wrap: anywhere;
 }

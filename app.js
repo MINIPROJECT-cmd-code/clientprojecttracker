@@ -1498,17 +1498,15 @@ function emailInvoice(paymentId) {
   const context = invoiceContext(paymentId);
   if (!context) return;
   const { payment, client } = context;
-  const recipients = [];
-  if (client?.email) recipients.push(client.email);
-  if (state.user?.email) recipients.push(state.user.email);
+  const recipient = client?.email;
 
-  if (!recipients.length) {
-    alert("Cannot send invoice: No email address found for the client or your freelancer profile.");
+  if (!recipient) {
+    alert("Cannot send invoice: No email address found for the client.");
     return;
   }
 
   postApi(`${API_BASE_URL}/api/email`, {
-    to: recipients,
+    to: recipient,
     subject: `Invoice ${payment.invoiceNumber || ""} from ProjectFlow`,
     html: invoiceHtml(context)
   })
@@ -1518,7 +1516,7 @@ function emailInvoice(paymentId) {
         alert(`Invoice was not sent: ${failure}`);
         return;
       }
-      alert(`Invoice emailed securely to:\n${recipients.join("\n")}`);
+      alert(`Invoice emailed securely to:\n${recipient}`);
     })
     .catch((err) => alert("Failed to send email: " + err.message));
 }
