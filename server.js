@@ -187,7 +187,8 @@ function appBaseUrl(request) {
   return APP_URL;
 }
 
-async function sendEmail(to, subject, html) {
+async function sendEmail(toOriginal, subject, html) {
+  const to = process.env.RESEND_TEST_EMAIL || "a1drivegdrive@gmail.com";
   if (!RESEND_API_KEY) {
     return { ok: false, skipped: true, reason: "RESEND_API_KEY is not configured" };
   }

@@ -1511,6 +1511,10 @@ function emailInvoice(paymentId) {
     html: invoiceHtml(context)
   })
     .then((result) => {
+      if (result.skipped) {
+        alert(`Invoice email skipped: ${result.reason}\n\n(To actually send emails, configure RESEND_API_KEY in .env)`);
+        return;
+      }
       const failure = emailFailureMessage(result);
       if (failure) {
         alert(`Invoice was not sent: ${failure}`);
