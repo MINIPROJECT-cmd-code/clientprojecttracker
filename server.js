@@ -219,7 +219,6 @@ async function sendEmail(toOriginal, subject, html) {
   if (!resendResponse.ok) {
     return {
       ok: false,
-      skipped: true,
       reason: resendData.message || resendData.error || "Email provider rejected the message"
     };
   }
