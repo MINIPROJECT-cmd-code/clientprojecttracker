@@ -1,8 +1,5 @@
 {
-  "user": {
-    "name": "hi",
-    "email": "hi@gmail.com"
-  },
+  "user": null,
   "users": [
     {
       "id": "c88b05f7-901a-470d-afab-004d086c30a0",
@@ -10,11 +7,100 @@
       "email": "hi@gmail.com",
       "passwordSalt": "2e5f1909a2b06228c4de449fada78d7b",
       "passwordHash": "45232e9c4fe7f0016f8184bffd2b24279bf8d3a984d7b4813ecb1a04aae600516ffb68e41390c4c3214472d0c0e896b8a6d1aac5ef354352963f53be61e9bf7e"
+    },
+    {
+      "id": "ca7fbd08-76e0-4469-9222-764baf453e77",
+      "name": "Persist Test",
+      "email": "persist-1777804904086@example.com",
+      "role": "admin",
+      "passwordSalt": "3d9eea06ebc215cc5eaef8c35a18be1d",
+      "passwordHash": "0f55309faa28e2ebf5b7b1aeec794ed48bfa1f70f0240eed80bbab78edd78c0f4191230378afaab6cdee89fd7ad3f24fc9ca997743da1ef207314abe9f4f113d"
     }
   ],
-  "clients": [],
-  "projects": [],
+  "clients": [
+    {
+      "id": "636418b2-1cd2-4a33-9740-ce750d87c04b",
+      "name": "Resend Test Client 1777804612835",
+      "email": "a1drivegdrive@gmail.com",
+      "phone": "test"
+    },
+    {
+      "id": "c788252d-39d9-4aa0-9ef7-c29a347541d1",
+      "name": "Persist Client 1777804904086",
+      "email": "a1drivegdrive@gmail.com",
+      "phone": "test"
+    }
+  ],
+  "projects": [
+    {
+      "id": "8f6dc430-e06a-4102-aa98-05d7a0e73861",
+      "clientId": "636418b2-1cd2-4a33-9740-ce750d87c04b",
+      "name": "Invoice Email Test 1777804612835",
+      "budget": 2500,
+      "dueDate": "2026-06-01",
+      "currency": "USD",
+      "taxRate": 0,
+      "notes": "Temporary test project for portal and invoice email verification.",
+      "milestone": "Planning"
+    },
+    {
+      "id": "5b5794a5-f559-46bd-a1b4-367a82fc98a6",
+      "clientId": "c788252d-39d9-4aa0-9ef7-c29a347541d1",
+      "name": "Persist Project 1777804904086",
+      "budget": 100,
+      "dueDate": "2026-06-01",
+      "currency": "USD",
+      "taxRate": 0,
+      "notes": "Persistence check",
+      "milestone": "Planning"
+    }
+  ],
   "tasks": [],
-  "payments": [],
-  "deadlines": []
+  "payments": [
+    {
+      "id": "ef71b400-2c6c-4077-a303-65a38f1eb199",
+      "projectId": "8f6dc430-e06a-4102-aa98-05d7a0e73861",
+      "invoiceNumber": "TEST-1777804612835",
+      "amount": 125,
+      "paidAmount": 0,
+      "method": "Bank Transfer",
+      "status": "Pending",
+      "date": "2026-05-10"
+    },
+    {
+      "id": "b7c490a3-4141-4609-a780-b139dfa48c7a",
+      "projectId": "5b5794a5-f559-46bd-a1b4-367a82fc98a6",
+      "invoiceNumber": "PDF-1777804904086",
+      "amount": 100,
+      "paidAmount": 0,
+      "method": "Bank Transfer",
+      "status": "Pending",
+      "date": "2026-05-10"
+    }
+  ],
+  "deadlines": [],
+  "timeLogs": [],
+  "attachments": [],
+  "comments": [],
+  "activity": [],
+  "milestones": [],
+  "settings": {},
+  "invites": [
+    {
+      "token": "c069ce9d132573a837d0c6221b01c8c47bc44d2c64a7b963",
+      "clientId": "636418b2-1cd2-4a33-9740-ce750d87c04b",
+      "name": "Resend Test Client 1777804612835",
+      "email": "a1drivegdrive@gmail.com",
+      "expiresAt": "2026-05-10T10:36:52.882Z",
+      "used": false
+    },
+    {
+      "token": "6fd5f54382a99a6895458598f502bec56df6774b893978b4",
+      "clientId": "c788252d-39d9-4aa0-9ef7-c29a347541d1",
+      "name": "Persist Client 1777804904086",
+      "email": "a1drivegdrive@gmail.com",
+      "expiresAt": "2026-05-10T10:41:44.242Z",
+      "used": false
+    }
+  ]
 }

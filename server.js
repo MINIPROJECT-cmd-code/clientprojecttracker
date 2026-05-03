@@ -3,6 +3,23 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
+function loadEnvFile() {
+  const envPath = path.join(__dirname, ".env");
+  if (!fs.existsSync(envPath)) return;
+
+  const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)?\s*$/);
+    if (!match) continue;
+    const [, key, rawValue = ""] = match;
+    if (Object.prototype.hasOwnProperty.call(process.env, key)) continue;
+    const value = rawValue.trim().replace(/^(['"])(.*)\1$/, "$2");
+    process.env[key] = value;
+  }
+}
+
+loadEnvFile();
+
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const DB_FILE = path.join(ROOT, "db.json");
@@ -10,7 +27,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "app_state";
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const RESEND_FROM = process.env.RESEND_FROM || "Project Tracker <onboarding@resend.dev>";
+const RESEND_FROM = process.env.RESEND_FROM;
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 
 const emptyState = {
@@ -71,11 +88,18 @@ async function readDb() {
   return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
 }
 
-async function writeDb(data) {
+async function writeDb(data, options = {}) {
+  const preserveUsers = options.preserveUsers !== false;
   const current = await readDb();
   const { user: currentUser, ...currentData } = current;
   const { user: incomingUser, ...incomingData } = data;
-  const nextState = { ...emptyState, ...currentData, ...incomingData, users: current.users || [], user: null };
+  const nextState = {
+    ...emptyState,
+    ...currentData,
+    ...incomingData,
+    users: preserveUsers ? (current.users || []) : (data.users || []),
+    user: null
+  };
   if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
     const response = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}`, {
       method: "POST",
@@ -117,6 +141,8 @@ async function stateForUser(user) {
     tasks: data.tasks.filter((task) => projectIds.includes(task.projectId)),
     payments: data.payments.filter((payment) => projectIds.includes(payment.projectId)),
     deadlines: data.deadlines.filter((deadline) => projectIds.includes(deadline.projectId)),
+    comments: (data.comments || []).filter((comment) => projectIds.includes(comment.projectId)),
+    activity: (data.activity || []).filter((entry) => projectIds.includes(entry.projectId)),
     timeLogs: data.timeLogs ? data.timeLogs.filter((log) => {
       const task = data.tasks.find(t => t.id === log.taskId);
       return task && projectIds.includes(task.projectId);
@@ -128,7 +154,9 @@ async function stateForUser(user) {
         return task && projectIds.includes(task.projectId);
       }
       return false;
-    }) : []
+    }) : [],
+    milestones: data.milestones || [],
+    settings: data.settings || emptyState.settings
   };
 }
 
@@ -151,9 +179,20 @@ function createToken() {
   return crypto.randomBytes(24).toString("hex");
 }
 
+function appBaseUrl(request) {
+  const host = request.headers.host || "";
+  if (host.startsWith("localhost") || host.startsWith("127.0.0.1")) {
+    return `http://${host}`;
+  }
+  return APP_URL;
+}
+
 async function sendEmail(to, subject, html) {
   if (!RESEND_API_KEY) {
     return { ok: false, skipped: true, reason: "RESEND_API_KEY is not configured" };
+  }
+  if (!RESEND_FROM) {
+    return { ok: false, skipped: true, reason: "RESEND_FROM is not configured with a verified sender address" };
   }
 
   const resendResponse = await fetch("https://api.resend.com/emails", {
@@ -169,12 +208,18 @@ async function sendEmail(to, subject, html) {
       html
     })
   });
-  const resendData = await resendResponse.json();
+  const resendText = await resendResponse.text();
+  let resendData = {};
+  try {
+    resendData = resendText ? JSON.parse(resendText) : {};
+  } catch (error) {
+    resendData = { message: resendText };
+  }
   if (!resendResponse.ok) {
     return {
       ok: false,
       skipped: true,
-      reason: resendData.message || "Email provider rejected the message"
+      reason: resendData.message || resendData.error || "Email provider rejected the message"
     };
   }
   return { ok: true, id: resendData.id };
@@ -276,7 +321,7 @@ const server = http.createServer(async (request, response) => {
       const newUser = { name, email, role: "admin" };
       data.users.push({ id: crypto.randomUUID(), ...newUser, ...createPasswordRecord(password) });
       data.user = null;
-      await writeDb(data);
+      await writeDb(data, { preserveUsers: false });
       sendJson(response, 200, await stateForUser(newUser));
     } catch (error) {
       sendJson(response, 400, { error: "Invalid signup payload" });
@@ -334,7 +379,7 @@ const server = http.createServer(async (request, response) => {
 
       data.users.push({ id: crypto.randomUUID(), name, email, role: "client", clientId, ...createPasswordRecord(password) });
       data.user = null;
-      await writeDb(data);
+      await writeDb(data, { preserveUsers: false });
       sendJson(response, 200, await publicState());
     } catch (error) {
       sendJson(response, 400, { error: "Invalid client user payload" });
@@ -362,7 +407,7 @@ const server = http.createServer(async (request, response) => {
       data.invites = data.invites || [];
       data.invites.push({ token, clientId, name, email, expiresAt, used: false });
       await writeDb(data);
-      const inviteUrl = `${APP_URL}?invite=${token}`;
+      const inviteUrl = `${appBaseUrl(request)}?invite=${token}`;
       const emailResult = await sendEmail(email, "Your client portal invite", `
         <h2>Your client portal is ready</h2>
         <p>Open this invite link and set your password:</p>
@@ -400,7 +445,7 @@ const server = http.createServer(async (request, response) => {
 
       data.users.push({ id: crypto.randomUUID(), name: invite.name, email: invite.email, role: "client", clientId: invite.clientId, ...createPasswordRecord(password) });
       invite.used = true;
-      await writeDb(data);
+      await writeDb(data, { preserveUsers: false });
       const loginUser = { name: invite.name, email: invite.email, role: "client", clientId: invite.clientId };
       sendJson(response, 200, await stateForUser(loginUser));
     } catch (error) {
@@ -426,7 +471,7 @@ const server = http.createServer(async (request, response) => {
       data.passwordResets = data.passwordResets || [];
       data.passwordResets.push({ token, email, expiresAt: new Date(Date.now() + 1000 * 60 * 30).toISOString(), used: false });
       await writeDb(data);
-      const resetUrl = `${APP_URL}?reset=${token}`;
+      const resetUrl = `${appBaseUrl(request)}?reset=${token}`;
       const emailResult = await sendEmail(email, "Reset your ProjectFlow password", `
         <h2>Password reset</h2>
         <p>Use this link to set a new password:</p>
@@ -466,7 +511,7 @@ const server = http.createServer(async (request, response) => {
       Object.assign(user, createPasswordRecord(password));
       delete user.password;
       reset.used = true;
-      await writeDb(data);
+      await writeDb(data, { preserveUsers: false });
       sendJson(response, 200, { ok: true });
     } catch (error) {
       sendJson(response, 400, { error: "Invalid reset password payload" });
@@ -486,7 +531,7 @@ const server = http.createServer(async (request, response) => {
       }
       
       const emailResult = await sendEmail(to, subject, html);
-      sendJson(response, 200, emailResult);
+      sendJson(response, emailResult.ok ? 200 : 502, emailResult);
     } catch (error) {
       console.error(error);
       sendJson(response, 500, { error: "Internal Server Error" });

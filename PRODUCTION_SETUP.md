@@ -40,4 +40,4 @@ RESEND_FROM=ProjectFlow <noreply@yourdomain.com>
 APP_URL=https://client-project-tracker-c93fc.web.app
 ```
 
-Until the domain is verified, the app creates invite/reset links and shows them manually instead of blocking the workflow.
+`RESEND_FROM` must use a sender address from a verified Resend domain. Until the API key and verified sender are configured, the app creates invite/reset links and shows them manually instead of blocking the workflow. Direct invoice/reminder emails report the Resend configuration error instead of pretending they were sent.

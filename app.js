@@ -95,7 +95,7 @@ async function postApi(url, payload) {
     body: JSON.stringify(payload)
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Request failed");
+  if (!response.ok) throw new Error(data.error || data.reason || "Request failed");
   const hasStatePayload = ["clients", "projects", "tasks", "payments", "deadlines", "user"].some((key) => Object.prototype.hasOwnProperty.call(data, key));
   if (!hasStatePayload) return data;
 
@@ -590,7 +590,8 @@ function paymentCard(payment) {
           <p>Paid ${money(paidAmount(payment), currency)} | Balance ${money(balanceAmount(payment), currency)} | ${escapeHtml(payment.method || "No method")}</p>
         </div>
         <div class="mini-actions">
-          <button type="button" data-print-invoice="${payment.id}">Invoice</button>
+          <button type="button" data-email-invoice="${payment.id}">Email invoice</button>
+          <button type="button" data-download-invoice="${payment.id}">PDF</button>
           <button type="button" data-edit-payment="${payment.id}">Edit</button>
           <button type="button" data-cycle-payment="${payment.id}">Update status</button>
           <button type="button" data-delete-payment="${payment.id}">Delete</button>
@@ -1358,6 +1359,170 @@ function sendDueReminders() {
     });
 }
 
+function emailFailureMessage(result) {
+  if (!result || result.ok !== false) return "";
+  return result.reason || result.error || "Email provider rejected the message";
+}
+
+function invoiceContext(paymentId) {
+  const payment = state.payments.find((entry) => entry.id === paymentId);
+  if (!payment) return null;
+  const project = findProject(payment.projectId);
+  const client = findClient(project?.clientId);
+  const currency = project?.currency || "USD";
+  const taxRate = Number(project?.taxRate || 0);
+  const subtotal = Number(payment.amount || 0);
+  const taxAmount = subtotal * (taxRate / 100);
+  const grandTotal = subtotal + taxAmount;
+  const paid = paidAmount(payment);
+  return { payment, project, client, currency, taxRate, subtotal, taxAmount, grandTotal, paid, balance: Math.max(0, grandTotal - paid) };
+}
+
+function invoiceHtml(context) {
+  const { payment, project, client, currency, taxRate, subtotal, taxAmount, grandTotal, paid, balance } = context;
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px; color: #1e293b; line-height: 1.6;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 40px; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px;">
+        <div>
+          <h1 style="margin: 0; color: #2563eb; font-size: 32px; letter-spacing: 1px;">INVOICE</h1>
+          <p style="margin: 5px 0 0 0; font-weight: bold;">Invoice #: ${escapeHtml(payment.invoiceNumber || "N/A")}</p>
+          <p style="margin: 5px 0 0 0; color: #64748b;">Date: ${dateLabel(payment.date)}</p>
+        </div>
+        <div style="text-align: right;">
+          <h2 style="margin: 0; font-size: 20px;">${escapeHtml(state.settings?.businessName || "ProjectFlow Freelancer")}</h2>
+          <p style="margin: 5px 0 0 0; color: #64748b;">${escapeHtml(state.user?.name || "")}</p>
+          <p style="margin: 5px 0 0 0; color: #64748b;">${escapeHtml(state.user?.email || "")}</p>
+        </div>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 40px;">
+        <div>
+          <h3 style="margin: 0 0 10px 0; color: #64748b; font-size: 14px; text-transform: uppercase;">Bill To:</h3>
+          <p style="margin: 0; font-size: 18px;"><strong>${escapeHtml(client?.name || "Client")}</strong></p>
+          <p style="margin: 5px 0 0 0; color: #64748b;">${escapeHtml(client?.email || "")}</p>
+        </div>
+        <div style="text-align: right;">
+          <h3 style="margin: 0 0 10px 0; color: #64748b; font-size: 14px; text-transform: uppercase;">Project:</h3>
+          <p style="margin: 0; font-size: 18px;">${escapeHtml(project?.name || "Project")}</p>
+        </div>
+      </div>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 40px;">
+        <thead>
+          <tr>
+            <th style="text-align: left; padding: 12px; border-bottom: 2px solid #e2e8f0; color: #64748b;">Description</th>
+            <th style="text-align: right; padding: 12px; border-bottom: 2px solid #e2e8f0; color: #64748b;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 16px 12px; border-bottom: 1px solid #f1f5f9;">Payment for ${escapeHtml(project?.name || "Project")}</td>
+            <td style="text-align: right; padding: 16px 12px; border-bottom: 1px solid #f1f5f9;">${money(subtotal, currency)}</td>
+          </tr>
+          ${taxRate > 0 ? `
+          <tr>
+            <td style="text-align: right; padding: 16px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b;">Tax (${taxRate}%)</td>
+            <td style="text-align: right; padding: 16px 12px; border-bottom: 1px solid #f1f5f9;">${money(taxAmount, currency)}</td>
+          </tr>` : ""}
+        </tbody>
+      </table>
+      <div style="text-align: right; border-top: 2px solid #e2e8f0; padding-top: 20px;">
+        <p style="margin: 0 0 10px 0; font-size: 24px; font-weight: bold; color: #0f172a;">Grand Total: ${money(grandTotal, currency)}</p>
+        <p style="margin: 0; font-size: 16px; color: #64748b;">Paid: <span style="color: #10b981;">${money(paid, currency)}</span> | Balance Due: <span style="color: #ef4444;">${money(balance, currency)}</span></p>
+      </div>
+    </div>
+  `;
+}
+
+function pdfText(value) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
+function downloadInvoicePdf(paymentId) {
+  const context = invoiceContext(paymentId);
+  if (!context) return;
+  const { payment, project, client, currency, taxRate, subtotal, taxAmount, grandTotal, paid, balance } = context;
+  const lines = [
+    `${state.settings?.businessName || "ProjectFlow"} Invoice`,
+    `Invoice #: ${payment.invoiceNumber || "N/A"}`,
+    `Date: ${dateLabel(payment.date)}`,
+    `Bill To: ${client?.name || "Client"}`,
+    `Client Email: ${client?.email || ""}`,
+    `Project: ${project?.name || "Project"}`,
+    "",
+    `Description: Payment for ${project?.name || "Project"}`,
+    `Subtotal: ${money(subtotal, currency)}`,
+    taxRate > 0 ? `Tax (${taxRate}%): ${money(taxAmount, currency)}` : "",
+    `Grand Total: ${money(grandTotal, currency)}`,
+    `Paid: ${money(paid, currency)}`,
+    `Balance Due: ${money(balance, currency)}`
+  ].filter(Boolean);
+
+  const textCommands = lines.map((line, index) => {
+    const y = 760 - (index * 24);
+    const size = index === 0 ? 20 : 12;
+    return `BT /F1 ${size} Tf 50 ${y} Td (${pdfText(line)}) Tj ET`;
+  }).join("\n");
+  const objects = [
+    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+    "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj",
+    "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
+    `5 0 obj << /Length ${textCommands.length} >> stream\n${textCommands}\nendstream endobj`
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object) => {
+    offsets.push(pdf.length);
+    pdf += `${object}\n`;
+  });
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer << /Root 1 0 R /Size ${objects.length + 1} >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  const blob = new Blob([pdf], { type: "application/pdf" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${payment.invoiceNumber || "invoice"}.pdf`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function emailInvoice(paymentId) {
+  const context = invoiceContext(paymentId);
+  if (!context) return;
+  const { payment, client } = context;
+  const recipients = [];
+  if (client?.email) recipients.push(client.email);
+  if (state.user?.email) recipients.push(state.user.email);
+
+  if (!recipients.length) {
+    alert("Cannot send invoice: No email address found for the client or your freelancer profile.");
+    return;
+  }
+
+  postApi(`${API_BASE_URL}/api/email`, {
+    to: recipients,
+    subject: `Invoice ${payment.invoiceNumber || ""} from ProjectFlow`,
+    html: invoiceHtml(context)
+  })
+    .then((result) => {
+      const failure = emailFailureMessage(result);
+      if (failure) {
+        alert(`Invoice was not sent: ${failure}`);
+        return;
+      }
+      alert(`Invoice emailed securely to:\n${recipients.join("\n")}`);
+    })
+    .catch((err) => alert("Failed to send email: " + err.message));
+}
+
 function handleActions(event) {
   const button = event.target.closest("button");
   if (!button) return;
@@ -1383,7 +1548,8 @@ function handleActions(event) {
     ["deleteTimelog", "deleteTimelog"],
     ["cycleTask", "cycleTask"],
     ["cyclePayment", "cyclePayment"],
-    ["printInvoice", "printInvoice"]
+    ["emailInvoice", "emailInvoice"],
+    ["downloadInvoice", "downloadInvoice"]
   ];
 
   const match = actionMap.find(([, datasetKey]) => button.dataset[datasetKey]);
@@ -1397,85 +1563,8 @@ function handleActions(event) {
     showProjectDetail(itemId);
     return;
   }
-  if (action === "printInvoice") {
-    const payment = state.payments.find(p => p.id === itemId);
-    if (!payment) return;
-    const project = findProject(payment.projectId);
-    const client = findClient(project?.clientId);
-    const currency = project?.currency || "USD";
-    const taxRate = project?.taxRate || 0;
-    
-    const subtotal = payment.amount;
-    const taxAmount = subtotal * (taxRate / 100);
-    const grandTotal = subtotal + taxAmount;
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px; color: #1e293b; line-height: 1.6;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 40px; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px;">
-          <div>
-            <h1 style="margin: 0; color: #2563eb; font-size: 32px; letter-spacing: 1px;">INVOICE</h1>
-            <p style="margin: 5px 0 0 0; font-weight: bold;">Invoice #: ${escapeHtml(payment.invoiceNumber || "N/A")}</p>
-            <p style="margin: 5px 0 0 0; color: #64748b;">Date: ${dateLabel(payment.date)}</p>
-          </div>
-          <div style="text-align: right;">
-            <h2 style="margin: 0; font-size: 20px;">ProjectFlow Freelancer</h2>
-            <p style="margin: 5px 0 0 0; color: #64748b;">${escapeHtml(state.user?.name || "")}</p>
-            <p style="margin: 5px 0 0 0; color: #64748b;">${escapeHtml(state.user?.email || "")}</p>
-          </div>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 40px;">
-          <div>
-            <h3 style="margin: 0 0 10px 0; color: #64748b; font-size: 14px; text-transform: uppercase;">Bill To:</h3>
-            <p style="margin: 0; font-size: 18px;"><strong>${escapeHtml(client?.name || "Client")}</strong></p>
-            <p style="margin: 5px 0 0 0; color: #64748b;">${escapeHtml(client?.email || "")}</p>
-          </div>
-          <div style="text-align: right;">
-            <h3 style="margin: 0 0 10px 0; color: #64748b; font-size: 14px; text-transform: uppercase;">Project:</h3>
-            <p style="margin: 0; font-size: 18px;">${escapeHtml(project?.name || "Project")}</p>
-          </div>
-        </div>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 40px;">
-          <thead>
-            <tr>
-              <th style="text-align: left; padding: 12px; border-bottom: 2px solid #e2e8f0; color: #64748b;">Description</th>
-              <th style="text-align: right; padding: 12px; border-bottom: 2px solid #e2e8f0; color: #64748b;">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="padding: 16px 12px; border-bottom: 1px solid #f1f5f9;">Payment for ${escapeHtml(project?.name || "Project")}</td>
-              <td style="text-align: right; padding: 16px 12px; border-bottom: 1px solid #f1f5f9;">${money(subtotal, currency)}</td>
-            </tr>
-            ${taxRate > 0 ? `
-            <tr>
-              <td style="text-align: right; padding: 16px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b;">Tax (${taxRate}%)</td>
-              <td style="text-align: right; padding: 16px 12px; border-bottom: 1px solid #f1f5f9;">${money(taxAmount, currency)}</td>
-            </tr>` : ""}
-          </tbody>
-        </table>
-        <div style="text-align: right; border-top: 2px solid #e2e8f0; padding-top: 20px;">
-          <p style="margin: 0 0 10px 0; font-size: 24px; font-weight: bold; color: #0f172a;">Grand Total: ${money(grandTotal, currency)}</p>
-          <p style="margin: 0; font-size: 16px; color: #64748b;">Paid: <span style="color: #10b981;">${money(paidAmount(payment), currency)}</span> | Balance Due: <span style="color: #ef4444;">${money(grandTotal - paidAmount(payment), currency)}</span></p>
-        </div>
-      </div>
-    `;
-    const recipients = [];
-    if (client?.email) recipients.push(client.email);
-    if (state.user?.email) recipients.push(state.user.email);
-    
-    if (recipients.length > 0) {
-      postApi(`${API_BASE_URL}/api/email`, {
-        to: recipients,
-        subject: `Invoice ${payment.invoiceNumber || ""} from ProjectFlow`,
-        html: html
-      })
-      .then(() => alert(`Invoice emailed securely to:\n${recipients.join("\n")}`))
-      .catch((err) => alert("Failed to send email: " + err.message));
-    } else {
-      alert("Cannot send invoice: No email address found for the client or your freelancer profile.");
-    }
-    return;
-  }
+  if (action === "emailInvoice") return emailInvoice(itemId);
+  if (action === "downloadInvoice") return downloadInvoicePdf(itemId);
 
   if (action === "createClientUser") return createClientUser(itemId);
   if (action === "editClient") return openEdit("client", itemId);
