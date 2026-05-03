@@ -88,11 +88,11 @@ function id() {
   return crypto.randomUUID();
 }
 
-function money(value) {
+function money(value, currency = "USD") {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0
+    currency: currency,
+    maximumFractionDigits: 2
   }).format(Number(value || 0));
 }
 
@@ -415,6 +415,7 @@ function renderProjects() {
 function projectCard(project) {
   const client = findClient(project.clientId);
   const progress = projectProgress(project.id);
+  const currency = project.currency || "USD";
   const paid = state.payments
     .filter((payment) => payment.projectId === project.id)
     .reduce((sum, payment) => sum + paidAmount(payment), 0);
@@ -424,7 +425,7 @@ function projectCard(project) {
       <div class="item-row">
         <div>
           <h3>${escapeHtml(project.name)}</h3>
-          <p>${escapeHtml(client?.name || "No client")} | Due ${dateLabel(project.dueDate)} | ${money(paid)} / ${money(project.budget)}</p>
+          <p>${escapeHtml(client?.name || "No client")} | Due ${dateLabel(project.dueDate)} | ${money(paid, currency)} / ${money(project.budget, currency)}</p>
         </div>
         <div class="mini-actions">
           <button type="button" data-view-project="${project.id}">View</button>
@@ -453,16 +454,26 @@ function renderTasks() {
     return (!query || searchMatch.call(query, task.title, project?.name)) && (!status || task.status === status);
   });
 
-  $("#taskList").innerHTML = tasks.length
-    ? tasks.map(taskCard).join("")
-    : emptyMessage("No tasks found", "Adjust filters or add a task.");
+  const pending = tasks.filter(t => t.status === "Pending");
+  const inProgress = tasks.filter(t => t.status === "In Progress");
+  const done = tasks.filter(t => t.status === "Done");
+
+  const renderList = (list) => list.length ? list.map(taskCard).join("") : "";
+
+  const pList = $("#kanbanPending");
+  const iList = $("#kanbanInProgress");
+  const dList = $("#kanbanDone");
+  
+  if (pList) pList.innerHTML = renderList(pending);
+  if (iList) iList.innerHTML = renderList(inProgress);
+  if (dList) dList.innerHTML = renderList(done);
 }
 
 function taskCard(task) {
   const project = findProject(task.projectId);
   const statusClass = task.status === "Done" ? "green" : task.status === "In Progress" ? "blue" : "amber";
   return `
-    <article class="item-card ${isTaskOverdue(task) ? "overdue" : ""}">
+    <article class="item-card kanban-card ${isTaskOverdue(task) ? "overdue" : ""}" draggable="true" data-task-id="${task.id}">
       <div class="item-row">
         <div>
           <h3>${escapeHtml(task.title)}</h3>
@@ -470,7 +481,6 @@ function taskCard(task) {
         </div>
         <div class="mini-actions">
           <button type="button" data-edit-task="${task.id}">Edit</button>
-          <button type="button" data-cycle-task="${task.id}">Update status</button>
           <button type="button" data-delete-task="${task.id}">Delete</button>
         </div>
       </div>
@@ -497,14 +507,15 @@ function renderPayments() {
 
 function paymentCard(payment) {
   const project = findProject(payment.projectId);
+  const currency = project?.currency || "USD";
   const statusClass = payment.status === "Received" ? "green" : payment.status === "Overdue" ? "red" : "amber";
   return `
     <article class="item-card ${isPaymentOverdue(payment) ? "overdue" : ""}">
       <div class="item-row">
         <div>
-          <h3>${money(payment.amount)}</h3>
+          <h3>${money(payment.amount, currency)}</h3>
           <p>${escapeHtml(project?.name || "No project")} | ${escapeHtml(payment.invoiceNumber || "No invoice")} | Due ${dateLabel(payment.date)}</p>
-          <p>Paid ${money(paidAmount(payment))} | Balance ${money(balanceAmount(payment))} | ${escapeHtml(payment.method || "No method")}</p>
+          <p>Paid ${money(paidAmount(payment), currency)} | Balance ${money(balanceAmount(payment), currency)} | ${escapeHtml(payment.method || "No method")}</p>
         </div>
         <div class="mini-actions">
           <button type="button" data-print-invoice="${payment.id}">Invoice</button>
@@ -620,7 +631,7 @@ function renderProjectDetail() {
       <div>
         <p class="eyebrow">${escapeHtml(client?.name || "No client")}</p>
         <h2>${escapeHtml(project.name)}</h2>
-        <p class="muted">Due ${dateLabel(project.dueDate)} | Budget ${money(project.budget)}</p>
+        <p class="muted">Due ${dateLabel(project.dueDate)} | Budget ${money(project.budget, project.currency)}</p>
         ${project.notes ? `<div class="note-text markdown-body" style="margin-top: 10px">${parseMarkdown(project.notes)}</div>` : ""}
       </div>
       <div class="mini-actions"><button type="button" data-edit-project="${project.id}">Edit project</button></div>
@@ -628,8 +639,8 @@ function renderProjectDetail() {
     <div class="metric-grid detail-metrics">
       <article class="metric-card"><span>${progress}%</span><p>Complete</p></article>
       <article class="metric-card"><span>${tasks.length}</span><p>Total tasks</p></article>
-      <article class="metric-card"><span>${money(received)}</span><p>Received</p></article>
-      <article class="metric-card"><span>${money(pending)}</span><p>Balance</p></article>
+      <article class="metric-card"><span>${money(received, project.currency)}</span><p>Received</p></article>
+      <article class="metric-card"><span>${money(pending, project.currency)}</span><p>Balance</p></article>
     </div>
     <div class="progress-track detail-progress" aria-label="${progress}% complete"><div class="progress-bar" style="width: ${progress}%"></div></div>
     <div class="detail-grid">
@@ -696,13 +707,27 @@ function renderClientPortal() {
 
 function portalProjectCard(project) {
   const progress = projectProgress(project.id);
+  const projectAttachments = state.attachments.filter(att => att.entityType === 'project' && att.entityId === project.id);
+  const attachmentsHTML = projectAttachments.length 
+    ? projectAttachments.map(att => `<a href="${API_BASE_URL}${att.url}" target="_blank" class="attachment-pill" style="margin-right:5px; font-size:12px;">📎 ${escapeHtml(att.filename)}</a>`).join("") 
+    : "";
+
   return `
     <article class="item-card ${isPastDue(project.dueDate) && progress < 100 ? "overdue" : ""}">
       <div>
         <h3>${escapeHtml(project.name)}</h3>
         <p>Due ${dateLabel(project.dueDate)} | Budget ${money(project.budget)}</p>
       </div>
-      ${project.notes ? `<p class="note-text">${escapeHtml(project.notes)}</p>` : ""}
+      ${project.notes ? `<div class="note-text markdown-body">${parseMarkdown(project.notes)}</div>` : ""}
+      
+      <div style="margin: 10px 0;">
+        ${attachmentsHTML}
+        <div style="margin-top: 10px;">
+          <input type="file" id="portalUpload_${project.id}" class="portal-upload" data-entity="project" data-entity-id="${project.id}" style="display:none">
+          <button class="ghost-button" type="button" onclick="document.getElementById('portalUpload_${project.id}').click()" style="padding:4px 8px; font-size:12px;">+ Upload File</button>
+        </div>
+      </div>
+
       <div class="progress-track"><div class="progress-bar" style="width: ${progress}%"></div></div>
       <div class="pill-row">
         <span class="pill green">${progress}% complete</span>
@@ -715,6 +740,8 @@ function portalProjectCard(project) {
 function portalTaskCard(task) {
   const project = findProject(task.projectId);
   const statusClass = task.status === "Done" ? "green" : task.status === "In Progress" ? "blue" : "amber";
+  const commentsHTML = (task.comments || []).map(c => `<div style="background:var(--bg); padding:8px; border-radius:4px; margin-bottom:5px; font-size:14px;"><strong style="color:var(--primary);">${escapeHtml(c.author)}:</strong> ${escapeHtml(c.text)}</div>`).join("");
+
   return `
     <article class="item-card ${isTaskOverdue(task) ? "overdue" : ""}">
       <h3>${escapeHtml(task.title)}</h3>
@@ -722,6 +749,13 @@ function portalTaskCard(task) {
       <div class="pill-row">
         <span class="pill ${statusClass}">${task.status}</span>
         ${isTaskOverdue(task) ? `<span class="pill red">Overdue</span>` : ""}
+      </div>
+      <div style="margin-top:15px; border-top:1px solid var(--border); padding-top:10px;">
+        ${commentsHTML}
+        <form class="comment-form" data-task-id="${task.id}" style="display:flex; gap:10px; margin-top:5px;">
+          <input type="text" name="commentText" placeholder="Add a comment..." style="flex-grow:1; padding:6px; font-size:14px;" required>
+          <button type="submit" class="secondary-button" style="padding:6px 12px; font-size:14px;">Post</button>
+        </form>
       </div>
     </article>
   `;
@@ -779,7 +813,9 @@ function addProject(event) {
     clientId: $("#projectClient").value,
     budget: Number($("#projectBudget").value || 0),
     dueDate: $("#projectDue").value,
-    notes: $("#projectNotes").value.trim()
+    notes: $("#projectNotes").value.trim(),
+    currency: $("#projectCurrency").value || "USD",
+    taxRate: Number($("#projectTaxRate").value || 0)
   });
   event.target.reset();
   saveState();
@@ -944,6 +980,8 @@ function editConfig(type, itemId) {
         { name: "name", label: "Project name", value: item.name, required: true },
         { name: "clientId", label: "Client", type: "select", value: item.clientId, options: clientOptions, required: true },
         { name: "budget", label: "Budget", type: "number", value: item.budget },
+        { name: "currency", label: "Currency", type: "select", value: item.currency || "USD", options: [{value:"USD",label:"USD"},{value:"EUR",label:"EUR"},{value:"GBP",label:"GBP"},{value:"AUD",label:"AUD"}] },
+        { name: "taxRate", label: "Tax Rate (%)", type: "number", value: item.taxRate || 0 },
         { name: "dueDate", label: "Due date", type: "date", value: item.dueDate, required: true },
         { name: "notes", label: "Project notes", type: "textarea", value: item.notes }
       ]
@@ -1003,6 +1041,7 @@ function saveEdit(event) {
   if ("budget" in data) data.budget = Number(data.budget || 0);
   if ("amount" in data) data.amount = Number(data.amount || 0);
   if ("paidAmount" in data) data.paidAmount = Number(data.paidAmount || 0);
+  if ("taxRate" in data) data.taxRate = Number(data.taxRate || 0);
   Object.assign(item, data);
   $("#editModal").close();
   editContext = null;
@@ -1028,7 +1067,17 @@ function createClientUser(clientId) {
     password
   })
     .then(() => {
-      alert("Client portal login created.");
+      postApi(`${API_BASE_URL}/api/email`, {
+        to: email.trim().toLowerCase(),
+        subject: "Your Client Portal Login Details",
+        html: `<h2>Welcome to ProjectFlow</h2>
+               <p>Your portal account has been created.</p>
+               <p><strong>Login:</strong> ${email.trim().toLowerCase()}<br>
+               <strong>Password:</strong> ${password}</p>
+               <p>Log in at <a href="${window.location.origin}">${window.location.origin}</a></p>`
+      }).catch(console.error);
+
+      alert("Client portal login created and email sent.");
       render();
     })
     .catch((error) => alert(error.message));
@@ -1078,6 +1127,13 @@ function handleActions(event) {
     if (!payment) return;
     const project = findProject(payment.projectId);
     const client = findClient(project?.clientId);
+    const currency = project?.currency || "USD";
+    const taxRate = project?.taxRate || 0;
+    
+    const subtotal = payment.amount;
+    const taxAmount = subtotal * (taxRate / 100);
+    const grandTotal = subtotal + taxAmount;
+
     const html = `
       <div class="invoice-print-view">
         <div class="invoice-header">
@@ -1113,19 +1169,34 @@ function handleActions(event) {
           <tbody>
             <tr>
               <td>Payment for ${escapeHtml(project?.name || "Project")}</td>
-              <td style="text-align: right">${money(payment.amount)}</td>
+              <td style="text-align: right">${money(subtotal, currency)}</td>
             </tr>
+            ${taxRate > 0 ? `
+            <tr>
+              <td style="text-align: right">Tax (${taxRate}%)</td>
+              <td style="text-align: right">${money(taxAmount, currency)}</td>
+            </tr>` : ""}
           </tbody>
         </table>
         <div class="invoice-total">
-          <p>Total: ${money(payment.amount)}</p>
-          <p style="font-size: 16px; color: #666">Paid: ${money(paidAmount(payment))} | Balance Due: ${money(balanceAmount(payment))}</p>
+          <p>Grand Total: ${money(grandTotal, currency)}</p>
+          <p style="font-size: 16px; color: #666">Paid: ${money(paidAmount(payment), currency)} | Balance Due: ${money(grandTotal - paidAmount(payment), currency)}</p>
         </div>
       </div>
     `;
     const printArea = $("#invoicePrintArea");
     if (printArea) {
       printArea.innerHTML = html;
+      
+      // Send Email
+      if (client?.email) {
+        postApi(`${API_BASE_URL}/api/email`, {
+          to: client.email,
+          subject: `Invoice ${payment.invoiceNumber || ""} from ProjectFlow`,
+          html: html
+        }).catch(console.error);
+      }
+
       setTimeout(() => { window.print(); }, 100);
     }
     return;
@@ -1276,15 +1347,82 @@ function handleFileUpload(input) {
 $("#appView").addEventListener("click", handleActions);
 $("#appView").addEventListener("input", handleFilterInput);
 $("#appView").addEventListener("change", (e) => {
-  if (e.target.id === "uploadAttachmentInput") {
+  if (e.target.id === "uploadAttachmentInput" || e.target.classList.contains("portal-upload")) {
     handleFileUpload(e.target);
   } else {
     handleFilterInput(e);
   }
 });
+$("#clientPortalView").addEventListener("change", (e) => {
+  if (e.target.classList.contains("portal-upload")) {
+    handleFileUpload(e.target);
+  }
+});
+document.addEventListener("submit", (e) => {
+  if (e.target.classList.contains("comment-form")) {
+    e.preventDefault();
+    const taskId = e.target.dataset.taskId;
+    const text = new FormData(e.target).get("commentText");
+    const task = state.tasks.find(t => t.id === taskId);
+    if (task && text) {
+      task.comments = task.comments || [];
+      task.comments.push({ author: state.user?.name || "Unknown", text, date: new Date().toISOString() });
+      saveState();
+      renderClientPortal();
+    }
+  }
+});
 $("#editForm").addEventListener("submit", saveEdit);
 $("#cancelEdit").addEventListener("click", () => $("#editModal").close());
 $("#closeEdit").addEventListener("click", () => $("#editModal").close());
+
+// Drag and drop for Kanban board
+document.addEventListener("dragstart", (e) => {
+  if (e.target.classList && e.target.classList.contains("kanban-card")) {
+    e.dataTransfer.setData("text/plain", e.target.dataset.taskId);
+    e.target.style.opacity = "0.5";
+  }
+});
+document.addEventListener("dragend", (e) => {
+  if (e.target.classList && e.target.classList.contains("kanban-card")) {
+    e.target.style.opacity = "1";
+  }
+});
+document.addEventListener("dragover", (e) => {
+  const column = e.target.closest(".kanban-column");
+  if (column) {
+    e.preventDefault(); // allow drop
+    const list = column.querySelector(".kanban-list");
+    if (list) list.classList.add("drag-over");
+  }
+});
+document.addEventListener("dragleave", (e) => {
+  const column = e.target.closest(".kanban-column");
+  if (column) {
+    const list = column.querySelector(".kanban-list");
+    if (list) list.classList.remove("drag-over");
+  }
+});
+document.addEventListener("drop", (e) => {
+  const column = e.target.closest(".kanban-column");
+  if (column) {
+    e.preventDefault();
+    const list = column.querySelector(".kanban-list");
+    if (list) list.classList.remove("drag-over");
+    
+    const taskId = e.dataTransfer.getData("text/plain");
+    const newStatus = column.dataset.status;
+    
+    if (taskId && newStatus) {
+      const task = state.tasks.find(t => t.id === taskId);
+      if (task && task.status !== newStatus) {
+        task.status = newStatus;
+        saveState();
+        render();
+      }
+    }
+  }
+});
 
 $$(".nav-button").forEach((button) => {
   button.addEventListener("click", () => switchTab(button.dataset.tab));
@@ -1308,6 +1446,11 @@ async function init() {
     showDashboardForRole();
   } else {
     showLogin();
+  }
+
+  // Register PWA Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(console.error);
   }
 }
 

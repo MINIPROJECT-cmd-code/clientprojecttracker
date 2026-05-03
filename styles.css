@@ -727,6 +727,50 @@ button {
   text-decoration: none;
   color: var(--ink);
 }
+
+/* Kanban Board Styles */
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+.kanban-column {
+  background-color: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 400px;
+}
+.kanban-header {
+  padding: 15px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.kanban-list {
+  padding: 10px;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100px;
+  transition: background-color 0.2s;
+}
+.kanban-list.drag-over {
+  background-color: var(--hover);
+  border-radius: 8px;
+}
+.kanban-card {
+  cursor: grab;
+}
+.kanban-card:active {
+  cursor: grabbing;
+}
 .attachment-pill:hover {
   background: var(--primary-soft);
 }

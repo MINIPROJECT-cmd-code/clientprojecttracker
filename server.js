@@ -272,6 +272,49 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (request.url === "/api/email" && request.method === "POST") {
+    try {
+      const body = await readBody(request);
+      const payload = JSON.parse(body);
+      const { to, subject, html } = payload;
+      
+      if (!to || !subject || !html) {
+        sendJson(response, 400, { error: "Missing to, subject, or html" });
+        return;
+      }
+      
+      const RESEND_API_KEY = "re_bE2qCdns_Go7GE2h6fdQCU8TgkZ3VJw3u";
+      const resendResponse = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${RESEND_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: "Project Tracker <onboarding@resend.dev>",
+          to: [to],
+          subject: subject,
+          html: html
+        })
+      });
+      
+      const resendData = await resendResponse.json();
+      
+      if (!resendResponse.ok) {
+        console.error("Resend Error:", resendData);
+        sendJson(response, 400, { error: "Failed to send email: " + (resendData.message || "Unknown error") });
+        return;
+      }
+      
+      console.log(`[EMAIL SENT] To: ${to} | Subject: ${subject}`);
+      sendJson(response, 200, { ok: true, id: resendData.id });
+    } catch (error) {
+      console.error(error);
+      sendJson(response, 500, { error: "Internal Server Error" });
+    }
+    return;
+  }
+
   if (request.url === "/api/upload" && request.method === "POST") {
     try {
       const body = await readBody(request);

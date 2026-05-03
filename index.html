@@ -1,8 +1,10 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
     <title>Client Project Tracker</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -172,7 +174,20 @@
             <input id="taskDue" type="date" required>
             <button class="primary-button" type="submit">Add task</button>
           </form>
-          <div id="taskList" class="list-stack"></div>
+          <div id="taskList" class="kanban-board">
+            <div class="kanban-column" data-status="Pending">
+              <div class="kanban-header"><h3>Pending</h3></div>
+              <div class="kanban-list" id="kanbanPending"></div>
+            </div>
+            <div class="kanban-column" data-status="In Progress">
+              <div class="kanban-header"><h3>In Progress</h3></div>
+              <div class="kanban-list" id="kanbanInProgress"></div>
+            </div>
+            <div class="kanban-column" data-status="Done">
+              <div class="kanban-header"><h3>Done</h3></div>
+              <div class="kanban-list" id="kanbanDone"></div>
+            </div>
+          </div>
         </section>
 
         <section id="payments" class="tab-panel hidden">
