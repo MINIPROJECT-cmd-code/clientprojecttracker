@@ -851,3 +851,413 @@ button:active {
     border: none;
   }
 }
+
+/* Product UI polish */
+:root {
+  --surface: var(--panel);
+  --border: var(--line);
+  --control-height: 46px;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.login-panel {
+  border-radius: 18px;
+  padding: clamp(24px, 4vw, 40px);
+  transform: translateY(0);
+  animation: cardIn 0.45s ease both;
+}
+
+.login-panel h1 {
+  font-size: clamp(28px, 5vw, 40px);
+  line-height: 1.05;
+}
+
+.sidebar {
+  justify-content: space-between;
+  overflow-y: auto;
+}
+
+.sidebar-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.sidebar .eyebrow,
+.nav-button {
+  color: var(--muted);
+}
+
+.nav-button {
+  min-height: 42px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-button.active,
+.nav-button:hover {
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary-dark);
+  transform: translateX(3px);
+}
+
+.content,
+.client-portal {
+  width: min(1500px, 100%);
+}
+
+.topbar,
+.portal-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar h1,
+.portal-header h1 {
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.08;
+}
+
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+input,
+select,
+textarea {
+  min-width: 0;
+  height: auto;
+  min-height: var(--control-height);
+  line-height: 1.25;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 112px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: color-mix(in srgb, var(--muted) 76%, transparent);
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--line));
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 34%, transparent);
+  outline-offset: 2px;
+}
+
+.primary-button,
+.secondary-button,
+.ghost-button,
+.mini-actions button,
+.link-button {
+  white-space: nowrap;
+}
+
+.secondary-button,
+.ghost-button,
+.mini-actions button {
+  min-width: max-content;
+}
+
+.link-button:hover {
+  color: var(--primary-dark);
+  transform: none;
+}
+
+.metric-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.metric-card,
+.item-card,
+.chart-card,
+.detail-hero,
+.kanban-column {
+  border-radius: var(--radius);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.metric-card:hover,
+.item-card:hover,
+.chart-card:hover,
+.kanban-column:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-hover);
+  border-color: color-mix(in srgb, var(--primary) 18%, var(--line));
+}
+
+.metric-card span {
+  font-size: clamp(26px, 4vw, 36px);
+  line-height: 1;
+}
+
+.split-layout,
+.detail-grid,
+.chart-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+
+.tool-row {
+  grid-template-columns: minmax(220px, 1fr) minmax(170px, max-content) max-content;
+  align-items: center;
+  background: color-mix(in srgb, var(--panel) 82%, var(--bg));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.module-form {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  align-items: end;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+
+.module-form .primary-button {
+  min-height: var(--control-height);
+}
+
+.item-row {
+  min-width: 0;
+}
+
+.item-row > div:first-child,
+.item-card,
+.detail-hero > div:first-child {
+  min-width: 0;
+}
+
+.item-card h3,
+.item-card p,
+.note-text,
+.chart-label,
+.portal-actions span,
+.user-profile span {
+  overflow-wrap: anywhere;
+}
+
+.mini-actions {
+  align-items: center;
+}
+
+.mini-actions button {
+  border: 1px solid color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.mini-actions button:hover {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  transform: translateY(-1px);
+}
+
+.pill {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.progress-track,
+.chart-track {
+  position: relative;
+}
+
+.progress-bar,
+.chart-fill {
+  transition: width 0.5s ease;
+}
+
+.empty {
+  min-height: 120px;
+  align-content: center;
+  background: color-mix(in srgb, var(--panel) 78%, var(--bg));
+}
+
+.edit-modal {
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
+.edit-panel {
+  width: 100%;
+}
+
+.modal-actions {
+  flex-wrap: wrap;
+}
+
+.kanban-board {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+}
+
+.kanban-column {
+  min-height: 320px;
+  overflow: hidden;
+}
+
+.kanban-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.kanban-card {
+  cursor: grab;
+}
+
+.kanban-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--line));
+}
+
+.attachment-pill {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1100px) {
+  .app-shell {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 920px) {
+  .app-shell {
+    display: block;
+  }
+
+  .sidebar {
+    position: sticky;
+    height: auto;
+    top: 0;
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .sidebar-top {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .nav-tabs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scrollbar-width: thin;
+  }
+
+  .nav-button {
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  .sidebar-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .content,
+  .client-portal {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 700px) {
+  .tool-row,
+  .module-form,
+  .metric-grid,
+  .split-layout,
+  .detail-grid,
+  .chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .item-row,
+  .portal-header,
+  .topbar,
+  .detail-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mini-actions,
+  .portal-actions,
+  .modal-actions {
+    justify-content: stretch;
+  }
+
+  .mini-actions button,
+  .portal-actions button,
+  .modal-actions button {
+    flex: 1 1 140px;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-shell {
+    padding: 14px;
+  }
+
+  .login-panel,
+  .edit-panel {
+    padding: 22px;
+  }
+
+  .content,
+  .client-portal {
+    padding: 14px;
+  }
+
+  .sidebar-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-card,
+  .item-card,
+  .chart-card,
+  .detail-hero,
+  .module-form,
+  .tool-row {
+    padding: 14px;
+  }
+}

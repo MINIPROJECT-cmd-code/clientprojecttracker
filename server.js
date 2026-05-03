@@ -48,43 +48,46 @@ function readDb() {
 
 function writeDb(data) {
   const current = readDb();
-  const nextState = { ...emptyState, ...current, ...data, users: current.users || [] };
+  const { user: currentUser, ...currentData } = current;
+  const { user: incomingUser, ...incomingData } = data;
+  const nextState = { ...emptyState, ...currentData, ...incomingData, users: current.users || [], user: null };
   fs.writeFileSync(DB_FILE, JSON.stringify(nextState, null, 2));
 }
 
 function publicState() {
-  const { users, ...data } = readDb();
-  if (!data.user) {
-    return { ...emptyState, users: undefined };
-  }
-
-  if (data.user.role === "client") {
-    const clientId = data.user.clientId;
-    const projects = data.projects.filter((project) => project.clientId === clientId);
-    const projectIds = projects.map((project) => project.id);
-    return {
-      user: data.user,
-      clients: data.clients.filter((client) => client.id === clientId),
-      projects,
-      tasks: data.tasks.filter((task) => projectIds.includes(task.projectId)),
-      payments: data.payments.filter((payment) => projectIds.includes(payment.projectId)),
-      deadlines: data.deadlines.filter((deadline) => projectIds.includes(deadline.projectId)),
-      timeLogs: data.timeLogs ? data.timeLogs.filter((log) => {
-        const task = data.tasks.find(t => t.id === log.taskId);
-        return task && projectIds.includes(task.projectId);
-      }) : [],
-      attachments: data.attachments ? data.attachments.filter((att) => {
-        if (att.entityType === 'project') return projectIds.includes(att.entityId);
-        if (att.entityType === 'task') {
-          const task = data.tasks.find(t => t.id === att.entityId);
-          return task && projectIds.includes(task.projectId);
-        }
-        return false;
-      }) : []
-    };
-  }
-
+  const { users, user, ...data } = readDb();
   return data;
+}
+
+function stateForUser(user) {
+  const data = publicState();
+  if (user.role !== "client") {
+    return { ...data, user };
+  }
+
+  const clientId = user.clientId;
+  const projects = data.projects.filter((project) => project.clientId === clientId);
+  const projectIds = projects.map((project) => project.id);
+  return {
+    user,
+    clients: data.clients.filter((client) => client.id === clientId),
+    projects,
+    tasks: data.tasks.filter((task) => projectIds.includes(task.projectId)),
+    payments: data.payments.filter((payment) => projectIds.includes(payment.projectId)),
+    deadlines: data.deadlines.filter((deadline) => projectIds.includes(deadline.projectId)),
+    timeLogs: data.timeLogs ? data.timeLogs.filter((log) => {
+      const task = data.tasks.find(t => t.id === log.taskId);
+      return task && projectIds.includes(task.projectId);
+    }) : [],
+    attachments: data.attachments ? data.attachments.filter((att) => {
+      if (att.entityType === "project") return projectIds.includes(att.entityId);
+      if (att.entityType === "task") {
+        const task = data.tasks.find(t => t.id === att.entityId);
+        return task && projectIds.includes(task.projectId);
+      }
+      return false;
+    }) : []
+  };
 }
 
 function createPasswordRecord(password) {
@@ -195,10 +198,11 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      data.users.push({ id: crypto.randomUUID(), name, email, role: "admin", ...createPasswordRecord(password) });
-      data.user = { name, email, role: "admin" };
+      const newUser = { name, email, role: "admin" };
+      data.users.push({ id: crypto.randomUUID(), ...newUser, ...createPasswordRecord(password) });
+      data.user = null;
       fs.writeFileSync(DB_FILE, JSON.stringify({ ...emptyState, ...data }, null, 2));
-      sendJson(response, 200, publicState());
+      sendJson(response, 200, stateForUser(newUser));
     } catch (error) {
       sendJson(response, 400, { error: "Invalid signup payload" });
     }
@@ -219,9 +223,8 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      data.user = { name: user.name, email: user.email, role: user.role || "admin", clientId: user.clientId || null };
-      fs.writeFileSync(DB_FILE, JSON.stringify({ ...emptyState, ...data }, null, 2));
-      sendJson(response, 200, publicState());
+      const loginUser = { name: user.name, email: user.email, role: user.role || "admin", clientId: user.clientId || null };
+      sendJson(response, 200, stateForUser(loginUser));
     } catch (error) {
       sendJson(response, 400, { error: "Invalid login payload" });
     }
@@ -229,10 +232,7 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.url === "/api/logout" && request.method === "POST") {
-    const data = readDb();
-    data.user = null;
-    fs.writeFileSync(DB_FILE, JSON.stringify({ ...emptyState, ...data }, null, 2));
-    sendJson(response, 200, publicState());
+    sendJson(response, 200, { user: null });
     return;
   }
 
@@ -241,17 +241,11 @@ const server = http.createServer(async (request, response) => {
       const body = await readBody(request);
       const payload = JSON.parse(body);
       const data = readDb();
-      const currentUser = data.user || {};
       const clientId = String(payload.clientId || "");
       const client = data.clients.find((entry) => entry.id === clientId);
       const email = String(payload.email || "").trim().toLowerCase();
       const name = String(payload.name || client?.name || "").trim();
       const password = String(payload.password || "");
-
-      if ((currentUser.role || "admin") !== "admin") {
-        sendJson(response, 403, { error: "Only freelancer accounts can create client portal users" });
-        return;
-      }
 
       if (!client || !name || !email || !password) {
         sendJson(response, 400, { error: "Client, name, email, and password are required" });
@@ -264,6 +258,7 @@ const server = http.createServer(async (request, response) => {
       }
 
       data.users.push({ id: crypto.randomUUID(), name, email, role: "client", clientId, ...createPasswordRecord(password) });
+      data.user = null;
       fs.writeFileSync(DB_FILE, JSON.stringify({ ...emptyState, ...data }, null, 2));
       sendJson(response, 200, publicState());
     } catch (error) {

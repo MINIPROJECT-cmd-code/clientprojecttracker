@@ -1,5 +1,6 @@
 const API_BASE_URL = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
 const API_URL = `${API_BASE_URL}/api/state`;
+const USER_SESSION_KEY = "client-project-tracker-user";
 
 const emptyState = {
   user: null,
@@ -42,6 +43,8 @@ async function loadState() {
     if (!response.ok) throw new Error("Database request failed");
     const data = await response.json();
     state = normalizeState(data);
+    const savedUser = sessionStorage.getItem(USER_SESSION_KEY);
+    if (savedUser) state.user = JSON.parse(savedUser);
   } catch (error) {
     alert("Could not connect to the database server. Start it with: node server.js");
     state = structuredClone(emptyState);
@@ -62,7 +65,7 @@ function normalizeState(data) {
 
 async function saveState() {
   try {
-    const { users, ...payload } = state;
+    const { users, user, ...payload } = state;
     await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -74,6 +77,7 @@ async function saveState() {
 }
 
 async function postApi(url, payload) {
+  const previousUser = state.user;
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -82,6 +86,16 @@ async function postApi(url, payload) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Request failed");
   state = normalizeState(data);
+  if (Object.prototype.hasOwnProperty.call(data, "user")) {
+    if (data.user) {
+      sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(data.user));
+    } else {
+      sessionStorage.removeItem(USER_SESSION_KEY);
+    }
+  } else {
+    state.user = previousUser;
+  }
+  return state;
 }
 
 function id() {
@@ -208,11 +222,6 @@ function showDashboardForRole() {
   } else {
     showApp();
   }
-}
-
-function logout() {
-  postApi(`${API_BASE_URL}/api/logout`, {})
-    .finally(showLogin);
 }
 
 function setAuthMode(mode) {
@@ -1288,11 +1297,10 @@ function handleFilterInput(event) {
 }
 
 function logout() {
-  postApi(`${API_BASE_URL}/api/logout`)
+  postApi(`${API_BASE_URL}/api/logout`, {})
     .then(() => {
       state.user = null;
-      localStorage.removeItem("theme");
-      document.body.classList.remove("dark-theme");
+      sessionStorage.removeItem(USER_SESSION_KEY);
       showLogin();
     })
     .catch((error) => alert(error.message));
