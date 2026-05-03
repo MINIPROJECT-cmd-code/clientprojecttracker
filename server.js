@@ -531,7 +531,7 @@ const server = http.createServer(async (request, response) => {
       }
       
       const emailResult = await sendEmail(to, subject, html);
-      sendJson(response, emailResult.ok ? 200 : 502, emailResult);
+      sendJson(response, 200, emailResult);
     } catch (error) {
       console.error(error);
       sendJson(response, 500, { error: "Internal Server Error" });
