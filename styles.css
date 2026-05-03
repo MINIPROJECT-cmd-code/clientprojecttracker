@@ -1261,3 +1261,347 @@ a:focus-visible {
     padding: 14px;
   }
 }
+
+/* Screenshot fixes: dark Kanban contrast and compact mobile shell */
+.dark-theme .kanban-column {
+  background: #162033;
+  border-color: #334155;
+}
+
+.dark-theme .kanban-header {
+  background: #111827;
+  border-bottom-color: #334155;
+  color: #f8fafc;
+}
+
+.dark-theme .kanban-list {
+  background: #162033;
+}
+
+.dark-theme .kanban-card,
+.dark-theme .item-card,
+.dark-theme .metric-card,
+.dark-theme .chart-card,
+.dark-theme .detail-hero,
+.dark-theme .module-form,
+.dark-theme .tool-row {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+.dark-theme .kanban-header h3,
+.dark-theme .section-heading h2 {
+  color: #f8fafc;
+}
+
+.dark-theme input,
+.dark-theme select,
+.dark-theme textarea {
+  background: #172033;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+.dark-theme input::placeholder,
+.dark-theme textarea::placeholder {
+  color: #94a3b8;
+}
+
+.dark-theme .secondary-button,
+.dark-theme .ghost-button,
+.dark-theme .mini-actions button {
+  background: #23345a;
+  border-color: #355486;
+  color: #bfdbfe;
+}
+
+.dark-theme .secondary-button:hover,
+.dark-theme .ghost-button:hover,
+.dark-theme .mini-actions button:hover {
+  background: #2d4580;
+  color: #ffffff;
+}
+
+@media (max-width: 700px) {
+  .app-shell {
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    position: static;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .sidebar-top {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .sidebar-top h2 {
+    font-size: 24px;
+  }
+
+  .user-profile {
+    margin-top: 0;
+    padding: 10px 12px;
+  }
+
+  .nav-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    gap: 8px;
+    padding-bottom: 0;
+  }
+
+  .nav-button {
+    width: 100%;
+    min-height: 38px;
+    padding: 0 10px;
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .sidebar-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sidebar-actions button {
+    min-height: 38px;
+    font-size: 14px;
+    padding: 0 10px;
+  }
+
+  .content,
+  .client-portal {
+    padding: 14px;
+  }
+
+  .topbar {
+    margin-bottom: 16px;
+  }
+
+  .module-form,
+  .tool-row {
+    padding: 12px;
+  }
+
+  .kanban-board {
+    gap: 14px;
+  }
+
+  .kanban-column {
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 380px) {
+  .sidebar {
+    padding: 12px;
+  }
+
+  .nav-tabs,
+  .sidebar-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .user-profile {
+    display: none;
+  }
+}
+
+/* Product feature polish: toasts, comments, timeline, milestones, switch */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 42px;
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  color: var(--primary-dark);
+  padding: 0 14px;
+}
+
+.theme-switch-track {
+  position: relative;
+  width: 42px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 34%, transparent);
+}
+
+.theme-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.22);
+  transition: transform 0.2s ease;
+}
+
+.theme-switch.is-dark .theme-switch-thumb {
+  transform: translateX(20px);
+}
+
+.toast-stack {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 9999;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100vw - 28px));
+  pointer-events: none;
+}
+
+.toast {
+  display: grid;
+  gap: 3px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--primary);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-hover);
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast.error {
+  border-left-color: var(--red);
+}
+
+.toast span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+button.is-loading {
+  cursor: wait;
+  opacity: 0.78;
+}
+
+.milestone-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.milestone-step {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.milestone-step.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.comment-form {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.comment-form textarea {
+  min-height: 84px;
+}
+
+.comment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.comment-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel) 82%, var(--bg));
+}
+
+.comment-card span,
+.timeline-item p {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.comment-card p {
+  margin: 0;
+}
+
+.timeline {
+  display: grid;
+  gap: 12px;
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.timeline-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.timeline-item strong,
+.timeline-item p {
+  margin: 0;
+}
+
+.dark-theme .toast,
+.dark-theme .comment-card,
+.dark-theme .milestone-step {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.dark-theme .milestone-step.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #0f172a;
+}
+
+@media (max-width: 700px) {
+  .toast-stack {
+    right: 14px;
+    bottom: 14px;
+  }
+
+  .theme-switch {
+    width: 100%;
+  }
+}

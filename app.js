@@ -11,7 +11,15 @@ const emptyState = {
   payments: [],
   deadlines: [],
   timeLogs: [],
-  attachments: []
+  attachments: [],
+  comments: [],
+  activity: [],
+  milestones: [],
+  settings: {
+    businessName: "ProjectFlow",
+    invoicePrefix: "INV",
+    defaultCurrency: "USD"
+  }
 };
 
 let state = structuredClone(emptyState);
@@ -53,7 +61,8 @@ async function loadState() {
 
 function normalizeState(data) {
   const next = { ...structuredClone(emptyState), ...data };
-  next.projects = next.projects.map((project) => ({ notes: "", ...project }));
+  next.settings = { ...emptyState.settings, ...(next.settings || {}) };
+  next.projects = next.projects.map((project) => ({ notes: "", milestone: "Planning", ...project }));
   next.payments = next.payments.map((payment) => ({
     invoiceNumber: "",
     method: "Bank Transfer",
@@ -66,13 +75,15 @@ function normalizeState(data) {
 async function saveState() {
   try {
     const { users, user, ...payload } = state;
-    await fetch(API_URL, {
+    const response = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
+    if (!response.ok) throw new Error("Save failed");
+    showToast("Saved", "Changes were stored successfully.");
   } catch (error) {
-    alert("Could not save to the database server.");
+    showToast("Save failed", "Could not save to the database server.", "error");
   }
 }
 
@@ -85,6 +96,9 @@ async function postApi(url, payload) {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Request failed");
+  const hasStatePayload = ["clients", "projects", "tasks", "payments", "deadlines", "user"].some((key) => Object.prototype.hasOwnProperty.call(data, key));
+  if (!hasStatePayload) return data;
+
   state = normalizeState(data);
   if (Object.prototype.hasOwnProperty.call(data, "user")) {
     if (data.user) {
@@ -96,6 +110,44 @@ async function postApi(url, payload) {
     state.user = previousUser;
   }
   return state;
+}
+
+function showToast(title, message = "", type = "success") {
+  const stack = $("#toastStack");
+  if (!stack) return;
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<strong>${escapeHtml(title)}</strong>${message ? `<span>${escapeHtml(message)}</span>` : ""}`;
+  stack.appendChild(toast);
+  setTimeout(() => toast.classList.add("show"), 10);
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 220);
+  }, 3200);
+}
+
+function setLoading(button, loadingText = "Working...") {
+  if (!button) return () => {};
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.classList.add("is-loading");
+  button.textContent = loadingText;
+  return () => {
+    button.disabled = false;
+    button.classList.remove("is-loading");
+    button.textContent = originalText;
+  };
+}
+
+function addActivity(type, message, projectId = selectedProjectId) {
+  state.activity.unshift({
+    id: id(),
+    type,
+    message,
+    projectId,
+    createdAt: new Date().toISOString(),
+    actor: state.user?.name || "System"
+  });
 }
 
 function id() {
@@ -253,6 +305,7 @@ function render() {
   setToday();
   renderUserProfile();
   renderSelects();
+  renderSettings();
   renderOverview();
   renderClients();
   renderProjects();
@@ -261,6 +314,16 @@ function render() {
   renderPayments();
   renderDeadlines();
   renderTimelogs();
+}
+
+function renderSettings() {
+  const settings = state.settings || {};
+  const business = $("#settingsBusinessName");
+  if (!business) return;
+  business.value = settings.businessName || "";
+  $("#settingsLogoUrl").value = settings.logoUrl || "";
+  $("#settingsInvoicePrefix").value = settings.invoicePrefix || "INV";
+  $("#settingsDefaultCurrency").value = settings.defaultCurrency || "USD";
 }
 
 function renderUserProfile() {
@@ -632,6 +695,8 @@ function renderProjectDetail() {
   const payments = state.payments.filter((payment) => payment.projectId === project.id);
   const deadlines = state.deadlines.filter((deadline) => deadline.projectId === project.id);
   const projectAttachments = state.attachments.filter(att => att.entityType === 'project' && att.entityId === project.id);
+  const projectComments = state.comments.filter((comment) => comment.projectId === project.id);
+  const projectActivity = state.activity.filter((entry) => entry.projectId === project.id).slice(0, 8);
   const received = payments.reduce((sum, payment) => sum + paidAmount(payment), 0);
   const pending = payments.reduce((sum, payment) => sum + balanceAmount(payment), 0);
 
@@ -640,7 +705,7 @@ function renderProjectDetail() {
       <div>
         <p class="eyebrow">${escapeHtml(client?.name || "No client")}</p>
         <h2>${escapeHtml(project.name)}</h2>
-        <p class="muted">Due ${dateLabel(project.dueDate)} | Budget ${money(project.budget, project.currency)}</p>
+        <p class="muted">Due ${dateLabel(project.dueDate)} | Budget ${money(project.budget, project.currency)} | ${escapeHtml(project.milestone || "Planning")}</p>
         ${project.notes ? `<div class="note-text markdown-body" style="margin-top: 10px">${parseMarkdown(project.notes)}</div>` : ""}
       </div>
       <div class="mini-actions"><button type="button" data-edit-project="${project.id}">Edit project</button></div>
@@ -656,6 +721,28 @@ function renderProjectDetail() {
       <section><div class="section-heading"><h2>Tasks</h2></div><div class="list-stack">${tasks.length ? tasks.map(taskCard).join("") : emptyMessage("No tasks", "Add tasks from the Tasks tab.")}</div></section>
       <section><div class="section-heading"><h2>Payments</h2></div><div class="list-stack">${payments.length ? payments.map(paymentCard).join("") : emptyMessage("No payments", "Add payments from the Payments tab.")}</div></section>
       <section><div class="section-heading"><h2>Deadlines</h2></div><div class="list-stack">${deadlines.length ? deadlines.map(deadlineCard).join("") : emptyMessage("No deadlines", "Add deadlines from the Deadlines tab.")}</div></section>
+      <section>
+        <div class="section-heading"><h2>Milestones</h2></div>
+        <div class="milestone-strip">
+          ${["Planning", "Design", "Development", "Review", "Delivered"].map((step) => `<span class="milestone-step ${step === project.milestone ? "active" : ""}">${step}</span>`).join("")}
+        </div>
+      </section>
+      <section>
+        <div class="section-heading"><h2>Comments</h2></div>
+        <form class="comment-form" data-comment-project="${project.id}">
+          <textarea name="comment" placeholder="Add a project comment or client feedback" required></textarea>
+          <button class="primary-button" type="submit">Add comment</button>
+        </form>
+        <div class="comment-list">
+          ${projectComments.length ? projectComments.map(commentCard).join("") : emptyMessage("No comments", "Comments and client feedback will appear here.")}
+        </div>
+      </section>
+      <section>
+        <div class="section-heading"><h2>Activity</h2></div>
+        <div class="timeline">
+          ${projectActivity.length ? projectActivity.map(activityItem).join("") : emptyMessage("No activity yet", "Updates will appear as the project changes.")}
+        </div>
+      </section>
       <section>
         <div class="section-heading"><h2>Attachments</h2></div>
         <div class="attachment-list">
@@ -675,6 +762,30 @@ function renderProjectDetail() {
           </div>
         </article>
       </section>
+    </div>
+  `;
+}
+
+function commentCard(comment) {
+  return `
+    <article class="comment-card">
+      <div class="item-row">
+        <strong>${escapeHtml(comment.author || "User")}</strong>
+        <span>${dateLabel(comment.createdAt?.slice(0, 10))}</span>
+      </div>
+      <p>${escapeHtml(comment.text)}</p>
+    </article>
+  `;
+}
+
+function activityItem(entry) {
+  return `
+    <div class="timeline-item">
+      <span class="timeline-dot"></span>
+      <div>
+        <strong>${escapeHtml(entry.message)}</strong>
+        <p>${escapeHtml(entry.actor || "System")} | ${dateLabel(entry.createdAt?.slice(0, 10))}</p>
+      </div>
     </div>
   `;
 }
@@ -717,6 +828,7 @@ function renderClientPortal() {
 function portalProjectCard(project) {
   const progress = projectProgress(project.id);
   const projectAttachments = state.attachments.filter(att => att.entityType === 'project' && att.entityId === project.id);
+  const projectComments = state.comments.filter((comment) => comment.projectId === project.id);
   const attachmentsHTML = projectAttachments.length 
     ? projectAttachments.map(att => `<a href="${API_BASE_URL}${att.url}" target="_blank" class="attachment-pill" style="margin-right:5px; font-size:12px;">📎 ${escapeHtml(att.filename)}</a>`).join("") 
     : "";
@@ -728,6 +840,9 @@ function portalProjectCard(project) {
         <p>Due ${dateLabel(project.dueDate)} | Budget ${money(project.budget)}</p>
       </div>
       ${project.notes ? `<div class="note-text markdown-body">${parseMarkdown(project.notes)}</div>` : ""}
+      <div class="milestone-strip">
+        ${["Planning", "Design", "Development", "Review", "Delivered"].map((step) => `<span class="milestone-step ${step === project.milestone ? "active" : ""}">${step}</span>`).join("")}
+      </div>
       
       <div style="margin: 10px 0;">
         ${attachmentsHTML}
@@ -735,6 +850,14 @@ function portalProjectCard(project) {
           <input type="file" id="portalUpload_${project.id}" class="portal-upload" data-entity="project" data-entity-id="${project.id}" style="display:none">
           <button class="ghost-button" type="button" onclick="document.getElementById('portalUpload_${project.id}').click()" style="padding:4px 8px; font-size:12px;">+ Upload File</button>
         </div>
+      </div>
+
+      <form class="comment-form" data-comment-project="${project.id}">
+        <textarea name="comment" placeholder="Send feedback to the freelancer" required></textarea>
+        <button class="primary-button" type="submit">Send feedback</button>
+      </form>
+      <div class="comment-list">
+        ${projectComments.length ? projectComments.slice(0, 4).map(commentCard).join("") : ""}
       </div>
 
       <div class="progress-track"><div class="progress-bar" style="width: ${progress}%"></div></div>
@@ -824,8 +947,10 @@ function addProject(event) {
     dueDate: $("#projectDue").value,
     notes: $("#projectNotes").value.trim(),
     currency: $("#projectCurrency").value || "USD",
-    taxRate: Number($("#projectTaxRate").value || 0)
+    taxRate: Number($("#projectTaxRate").value || 0),
+    milestone: "Planning"
   });
+  addActivity("project", `Project created: ${$("#projectName").value.trim()}`, state.projects.at(-1).id);
   event.target.reset();
   saveState();
   render();
@@ -840,6 +965,7 @@ function addTask(event) {
     status: $("#taskStatus").value,
     dueDate: $("#taskDue").value
   });
+  addActivity("task", `Task added: ${$("#taskTitle").value.trim()}`, $("#taskProject").value);
   event.target.reset();
   saveState();
   render();
@@ -863,6 +989,7 @@ function addPayment(event) {
     status: $("#paymentStatus").value,
     date: $("#paymentDate").value
   });
+  addActivity("payment", `Payment recorded: ${money(amount)}`, $("#paymentProject").value);
   event.target.reset();
   saveState();
   render();
@@ -877,6 +1004,7 @@ function addDeadline(event) {
     date: $("#deadlineDate").value,
     priority: $("#deadlinePriority").value
   });
+  addActivity("deadline", `Deadline added: ${$("#deadlineTitle").value.trim()}`, $("#deadlineProject").value);
   event.target.reset();
   saveState();
   render();
@@ -989,6 +1117,7 @@ function editConfig(type, itemId) {
   const paymentStatusOptions = ["Pending", "Received", "Overdue"].map((value) => ({ value, label: value }));
   const methodOptions = ["Bank Transfer", "Cash", "Card", "UPI", "Other"].map((value) => ({ value, label: value }));
   const priorityOptions = ["Normal", "High", "Critical"].map((value) => ({ value, label: value }));
+  const milestoneOptions = ["Planning", "Design", "Development", "Review", "Delivered"].map((value) => ({ value, label: value }));
 
   if (type === "client") {
     const item = findClient(itemId);
@@ -1013,6 +1142,7 @@ function editConfig(type, itemId) {
         { name: "budget", label: "Budget", type: "number", value: item.budget },
         { name: "currency", label: "Currency", type: "select", value: item.currency || "USD", options: [{value:"USD",label:"USD"},{value:"EUR",label:"EUR"},{value:"GBP",label:"GBP"},{value:"AUD",label:"AUD"},{value:"INR",label:"INR"}] },
         { name: "taxRate", label: "Tax Rate (%)", type: "number", value: item.taxRate || 0 },
+        { name: "milestone", label: "Milestone", type: "select", value: item.milestone || "Planning", options: milestoneOptions },
         { name: "dueDate", label: "Due date", type: "date", value: item.dueDate, required: true },
         { name: "notes", label: "Project notes", type: "textarea", value: item.notes }
       ]
@@ -1068,12 +1198,16 @@ function saveEdit(event) {
   if (!editContext) return;
   const item = state[editContext.collection].find((entry) => entry.id === editContext.itemId);
   if (!item) return;
+  const previousMilestone = item.milestone;
   const data = Object.fromEntries(new FormData(event.target).entries());
   if ("budget" in data) data.budget = Number(data.budget || 0);
   if ("amount" in data) data.amount = Number(data.amount || 0);
   if ("paidAmount" in data) data.paidAmount = Number(data.paidAmount || 0);
   if ("taxRate" in data) data.taxRate = Number(data.taxRate || 0);
   Object.assign(item, data);
+  if (editContext.collection === "projects" && data.milestone && data.milestone !== previousMilestone) {
+    addActivity("milestone", `Milestone changed to ${data.milestone}`, item.id);
+  }
   $("#editModal").close();
   editContext = null;
   saveState();
@@ -1086,32 +1220,142 @@ function createClientUser(clientId) {
 
   const name = prompt("Company user name", client.name);
   if (!name) return;
-  const email = prompt("Company login email", client.email);
+  const email = prompt("Company invite email", client.email);
   if (!email) return;
-  const password = prompt("Temporary password for company login");
-  if (!password) return;
 
-  postApi(`${API_BASE_URL}/api/client-user`, {
+  postApi(`${API_BASE_URL}/api/invite`, {
     clientId,
     name: name.trim(),
-    email: email.trim().toLowerCase(),
-    password
+    email: email.trim().toLowerCase()
   })
-    .then(() => {
-      postApi(`${API_BASE_URL}/api/email`, {
-        to: email.trim().toLowerCase(),
-        subject: "Your Client Portal Login Details",
-        html: `<h2>Welcome to ProjectFlow</h2>
-               <p>Your portal account has been created.</p>
-               <p><strong>Login:</strong> ${email.trim().toLowerCase()}<br>
-               <strong>Password:</strong> ${password}</p>
-               <p>Log in at <a href="${window.location.origin}">${window.location.origin}</a></p>`
-      }).catch(console.error);
-
-      alert("Client portal login created and email sent.");
+    .then((result) => {
+      const inviteUrl = result.inviteUrl || "Invite created";
+      const skipped = result.email?.skipped ? `\n\nEmail was not sent: ${result.email.reason}\nCopy this invite link manually:\n${inviteUrl}` : "";
+      alert(`Client invite created.${skipped || "\nEmail sent if your email provider is configured."}`);
       render();
     })
     .catch((error) => alert(error.message));
+}
+
+async function handleInviteOrResetFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const invite = params.get("invite");
+  const reset = params.get("reset");
+  if (invite) {
+    const password = prompt("Create a password for your client portal");
+    if (!password) return false;
+    try {
+      await postApi(`${API_BASE_URL}/api/accept-invite`, { token: invite, password });
+      history.replaceState({}, "", window.location.pathname);
+      showDashboardForRole();
+      return true;
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+  if (reset) {
+    const password = prompt("Enter your new password");
+    if (!password) return false;
+    try {
+      await postApi(`${API_BASE_URL}/api/reset-password`, { token: reset, password });
+      history.replaceState({}, "", window.location.pathname);
+      alert("Password updated. Please log in.");
+      showLogin();
+      return true;
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+  return false;
+}
+
+function addComment(event) {
+  const form = event.target.closest("[data-comment-project]");
+  if (!form) return;
+  event.preventDefault();
+  const projectId = form.dataset.commentProject;
+  const textarea = form.querySelector("textarea[name='comment']");
+  const text = textarea.value.trim();
+  if (!text) return;
+  state.comments.unshift({
+    id: id(),
+    projectId,
+    text,
+    author: state.user?.name || "User",
+    role: state.user?.role || "admin",
+    createdAt: new Date().toISOString()
+  });
+  addActivity("comment", "Comment added", projectId);
+  textarea.value = "";
+  saveState();
+  render();
+  if (state.user?.role === "client") renderClientPortal();
+  showToast("Comment added", "Your note was added to the project.");
+}
+
+function saveSettings(event) {
+  event.preventDefault();
+  state.settings = {
+    ...state.settings,
+    businessName: $("#settingsBusinessName").value.trim() || "ProjectFlow",
+    logoUrl: $("#settingsLogoUrl").value.trim(),
+    invoicePrefix: $("#settingsInvoicePrefix").value.trim() || "INV",
+    defaultCurrency: $("#settingsDefaultCurrency").value || "USD"
+  };
+  saveState();
+  showToast("Settings saved", "Business and invoice settings were updated.");
+}
+
+function requestPasswordReset() {
+  const email = prompt("Enter your account email");
+  if (!email) return;
+  postApi(`${API_BASE_URL}/api/forgot-password`, { email: email.trim().toLowerCase() })
+    .then((result) => {
+      const skipped = result.email?.skipped && result.resetUrl
+        ? `\n\nEmail was not sent: ${result.email.reason}\nUse this reset link:\n${result.resetUrl}`
+        : "";
+      alert(`If that account exists, a reset link was created.${skipped}`);
+    })
+    .catch((error) => alert(error.message));
+}
+
+function sendDueReminders() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueSoon = (dateValue) => {
+    if (!dateValue) return false;
+    const due = new Date(`${dateValue}T00:00:00`);
+    const days = Math.ceil((due - today) / 86400000);
+    return days <= 3;
+  };
+  const reminders = [];
+
+  state.deadlines.filter((deadline) => dueSoon(deadline.date)).forEach((deadline) => {
+    const project = findProject(deadline.projectId);
+    const client = findClient(project?.clientId);
+    if (client?.email) {
+      reminders.push({ to: client.email, subject: `Deadline reminder: ${deadline.title}`, html: `<p>${deadline.title} is due ${dateLabel(deadline.date)} for ${project?.name || "your project"}.</p>` });
+    }
+  });
+
+  state.payments.filter((payment) => payment.status !== "Received" && dueSoon(payment.date)).forEach((payment) => {
+    const project = findProject(payment.projectId);
+    const client = findClient(project?.clientId);
+    if (client?.email) {
+      reminders.push({ to: client.email, subject: `Payment reminder: ${payment.invoiceNumber || "Invoice"}`, html: `<p>Your balance of ${money(balanceAmount(payment), project?.currency)} is due ${dateLabel(payment.date)}.</p>` });
+    }
+  });
+
+  if (!reminders.length) {
+    showToast("No reminders", "No due deadlines or unpaid invoices found.");
+    return;
+  }
+
+  Promise.all(reminders.map((reminder) => postApi(`${API_BASE_URL}/api/email`, reminder).catch((error) => ({ skipped: true, reason: error.message }))))
+    .then((results) => {
+      const skipped = results.filter((result) => result.skipped || result.ok === false).length;
+      showToast("Reminders processed", `${reminders.length - skipped} sent, ${skipped} skipped.`);
+    });
 }
 
 function handleActions(event) {
@@ -1342,6 +1586,7 @@ $("#portalLogoutButton").addEventListener("click", () => {
 
 $("#showLogin").addEventListener("click", () => setAuthMode("login"));
 $("#showSignup").addEventListener("click", () => setAuthMode("signup"));
+$("#forgotPasswordButton").addEventListener("click", requestPasswordReset);
 $("#backToProjects").addEventListener("click", () => switchTab("projects"));
 $("#clientForm").addEventListener("submit", addClient);
 $("#projectForm").addEventListener("submit", addProject);
@@ -1350,6 +1595,11 @@ $("#paymentForm").addEventListener("submit", addPayment);
 $("#deadlineForm").addEventListener("submit", addDeadline);
 const timelogForm = $("#timelogForm");
 if (timelogForm) timelogForm.addEventListener("submit", addTimelog);
+const settingsForm = $("#settingsForm");
+if (settingsForm) settingsForm.addEventListener("submit", saveSettings);
+const sendReminderButton = $("#sendReminderButton");
+if (sendReminderButton) sendReminderButton.addEventListener("click", sendDueReminders);
+document.addEventListener("submit", addComment);
 function handleFileUpload(input) {
   const file = input.files[0];
   if (!file) return;
@@ -1477,16 +1727,26 @@ const themeToggle = document.getElementById("themeToggle");
 const currentTheme = localStorage.getItem("theme");
 if (currentTheme === "dark") document.body.classList.add("dark-theme");
 if (themeToggle) {
+  const syncThemeLabel = () => {
+    const isDark = document.body.classList.contains("dark-theme");
+    themeToggle.classList.toggle("is-dark", isDark);
+    const label = $("#themeToggleLabel");
+    if (label) label.textContent = isDark ? "Light mode" : "Dark mode";
+  };
+  syncThemeLabel();
   themeToggle.addEventListener("click", () => {
     document.body.classList.toggle("dark-theme");
     const theme = document.body.classList.contains("dark-theme") ? "dark" : "light";
     localStorage.setItem("theme", theme);
+    syncThemeLabel();
     renderCharts();
   });
 }
 
 async function init() {
   await loadState();
+  const handledLink = await handleInviteOrResetFromUrl();
+  if (handledLink) return;
   if (state.user) {
     showDashboardForRole();
   } else {

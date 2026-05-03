@@ -31,6 +31,7 @@
             <input id="loginPassword" type="password" placeholder="Any password" required>
           </label>
           <button class="primary-button" type="submit">Log in</button>
+          <p class="auth-link-row"><button id="forgotPasswordButton" class="link-button" type="button">Forgot password?</button></p>
           <p class="auth-link-row">Don't have an account? <button id="showSignup" class="link-button" type="button">Signup</button></p>
         </form>
         <form id="signupForm" class="form-grid hidden">
@@ -69,9 +70,13 @@
           <button class="nav-button" data-tab="payments">Payments</button>
           <button class="nav-button" data-tab="deadlines">Deadlines</button>
           <button class="nav-button" data-tab="timelogs">Time Logs</button>
+          <button class="nav-button" data-tab="settings">Settings</button>
         </nav>
         <div class="sidebar-actions">
-          <button id="themeToggle" class="secondary-button" type="button">Toggle Dark Mode</button>
+          <button id="themeToggle" class="theme-switch" type="button" aria-label="Toggle dark mode">
+            <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
+            <span id="themeToggleLabel">Dark mode</span>
+          </button>
           <button id="logoutButton" class="ghost-button" type="button">Log out</button>
         </div>
       </aside>
@@ -274,6 +279,29 @@
           </form>
           <div id="timelogList" class="list-stack"></div>
         </section>
+
+        <section id="settings" class="tab-panel hidden">
+          <form id="settingsForm" class="module-form">
+            <input id="settingsBusinessName" placeholder="Business name">
+            <input id="settingsLogoUrl" placeholder="Logo URL">
+            <input id="settingsInvoicePrefix" placeholder="Invoice prefix">
+            <select id="settingsDefaultCurrency">
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="GBP">GBP</option>
+              <option value="AUD">AUD</option>
+              <option value="INR">INR</option>
+            </select>
+            <button class="primary-button" type="submit">Save settings</button>
+          </form>
+          <div class="item-card">
+            <h3>Email reminders</h3>
+            <p>Send reminder emails for due deadlines and unpaid invoices. If Resend is still in testing mode, the app will show which emails were skipped instead of failing.</p>
+            <div class="mini-actions">
+              <button class="secondary-button" type="button" id="sendReminderButton">Send due reminders</button>
+            </div>
+          </div>
+        </section>
       </section>
     </main>
 
@@ -329,6 +357,7 @@
     </dialog>
 
     <div id="invoicePrintArea" class="hidden"></div>
+    <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
 
     <script src="config.js"></script>
     <script src="app.js"></script>

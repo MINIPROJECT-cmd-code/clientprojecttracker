@@ -6,6 +6,12 @@ const path = require("path");
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const DB_FILE = path.join(ROOT, "db.json");
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "app_state";
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const RESEND_FROM = process.env.RESEND_FROM || "Project Tracker <onboarding@resend.dev>";
+const APP_URL = process.env.APP_URL || "http://localhost:3000";
 
 const emptyState = {
   user: null,
@@ -16,7 +22,15 @@ const emptyState = {
   payments: [],
   deadlines: [],
   timeLogs: [],
-  attachments: []
+  attachments: [],
+  comments: [],
+  activity: [],
+  milestones: [],
+  settings: {
+    businessName: "ProjectFlow",
+    invoicePrefix: "INV",
+    defaultCurrency: "USD"
+  }
 };
 
 const contentTypes = {
@@ -41,26 +55,54 @@ function ensureDb() {
   }
 }
 
-function readDb() {
+async function readDb() {
   ensureDb();
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?id=eq.main&select=data`, {
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+      }
+    });
+    const rows = await response.json();
+    if (!response.ok) throw new Error(rows.message || "Could not read Supabase state");
+    return { ...emptyState, ...(rows[0]?.data || {}) };
+  }
   return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
 }
 
-function writeDb(data) {
-  const current = readDb();
+async function writeDb(data) {
+  const current = await readDb();
   const { user: currentUser, ...currentData } = current;
   const { user: incomingUser, ...incomingData } = data;
   const nextState = { ...emptyState, ...currentData, ...incomingData, users: current.users || [], user: null };
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates"
+      },
+      body: JSON.stringify({ id: "main", data: nextState })
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error || "Could not write Supabase state");
+    }
+    return;
+  }
   fs.writeFileSync(DB_FILE, JSON.stringify(nextState, null, 2));
 }
 
-function publicState() {
-  const { users, user, ...data } = readDb();
+async function publicState() {
+  const { users, user, ...data } = await readDb();
   return data;
 }
 
-function stateForUser(user) {
-  const data = publicState();
+async function stateForUser(user) {
+  const data = await publicState();
   if (user.role !== "client") {
     return { ...data, user };
   }
@@ -103,6 +145,39 @@ function passwordMatches(user, password) {
   }
 
   return user.password === password;
+}
+
+function createToken() {
+  return crypto.randomBytes(24).toString("hex");
+}
+
+async function sendEmail(to, subject, html) {
+  if (!RESEND_API_KEY) {
+    return { ok: false, skipped: true, reason: "RESEND_API_KEY is not configured" };
+  }
+
+  const resendResponse = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from: RESEND_FROM,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html
+    })
+  });
+  const resendData = await resendResponse.json();
+  if (!resendResponse.ok) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: resendData.message || "Email provider rejected the message"
+    };
+  }
+  return { ok: true, id: resendData.id };
 }
 
 function sendJson(response, status, data) {
@@ -164,14 +239,14 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.url === "/api/state" && request.method === "GET") {
-    sendJson(response, 200, publicState());
+    sendJson(response, 200, await publicState());
     return;
   }
 
   if (request.url === "/api/state" && request.method === "POST") {
     try {
       const body = await readBody(request);
-      writeDb(JSON.parse(body));
+      await writeDb(JSON.parse(body));
       sendJson(response, 200, { ok: true });
     } catch (error) {
       sendJson(response, 400, { error: "Invalid database payload" });
@@ -183,7 +258,7 @@ const server = http.createServer(async (request, response) => {
     try {
       const body = await readBody(request);
       const payload = JSON.parse(body);
-      const data = readDb();
+      const data = await readDb();
       const email = String(payload.email || "").trim().toLowerCase();
       const name = String(payload.name || "").trim();
       const password = String(payload.password || "");
@@ -201,8 +276,8 @@ const server = http.createServer(async (request, response) => {
       const newUser = { name, email, role: "admin" };
       data.users.push({ id: crypto.randomUUID(), ...newUser, ...createPasswordRecord(password) });
       data.user = null;
-      fs.writeFileSync(DB_FILE, JSON.stringify({ ...emptyState, ...data }, null, 2));
-      sendJson(response, 200, stateForUser(newUser));
+      await writeDb(data);
+      sendJson(response, 200, await stateForUser(newUser));
     } catch (error) {
       sendJson(response, 400, { error: "Invalid signup payload" });
     }
@@ -213,7 +288,7 @@ const server = http.createServer(async (request, response) => {
     try {
       const body = await readBody(request);
       const payload = JSON.parse(body);
-      const data = readDb();
+      const data = await readDb();
       const email = String(payload.email || "").trim().toLowerCase();
       const password = String(payload.password || "");
       const user = data.users.find((entry) => entry.email === email && passwordMatches(entry, password));
@@ -224,7 +299,7 @@ const server = http.createServer(async (request, response) => {
       }
 
       const loginUser = { name: user.name, email: user.email, role: user.role || "admin", clientId: user.clientId || null };
-      sendJson(response, 200, stateForUser(loginUser));
+      sendJson(response, 200, await stateForUser(loginUser));
     } catch (error) {
       sendJson(response, 400, { error: "Invalid login payload" });
     }
@@ -240,7 +315,7 @@ const server = http.createServer(async (request, response) => {
     try {
       const body = await readBody(request);
       const payload = JSON.parse(body);
-      const data = readDb();
+      const data = await readDb();
       const clientId = String(payload.clientId || "");
       const client = data.clients.find((entry) => entry.id === clientId);
       const email = String(payload.email || "").trim().toLowerCase();
@@ -259,10 +334,142 @@ const server = http.createServer(async (request, response) => {
 
       data.users.push({ id: crypto.randomUUID(), name, email, role: "client", clientId, ...createPasswordRecord(password) });
       data.user = null;
-      fs.writeFileSync(DB_FILE, JSON.stringify({ ...emptyState, ...data }, null, 2));
-      sendJson(response, 200, publicState());
+      await writeDb(data);
+      sendJson(response, 200, await publicState());
     } catch (error) {
       sendJson(response, 400, { error: "Invalid client user payload" });
+    }
+    return;
+  }
+
+  if (request.url === "/api/invite" && request.method === "POST") {
+    try {
+      const body = await readBody(request);
+      const payload = JSON.parse(body);
+      const data = await readDb();
+      const clientId = String(payload.clientId || "");
+      const client = data.clients.find((entry) => entry.id === clientId);
+      const email = String(payload.email || client?.email || "").trim().toLowerCase();
+      const name = String(payload.name || client?.name || "").trim();
+
+      if (!client || !name || !email) {
+        sendJson(response, 400, { error: "Client, name, and email are required" });
+        return;
+      }
+
+      const token = createToken();
+      const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
+      data.invites = data.invites || [];
+      data.invites.push({ token, clientId, name, email, expiresAt, used: false });
+      await writeDb(data);
+      const inviteUrl = `${APP_URL}?invite=${token}`;
+      const emailResult = await sendEmail(email, "Your client portal invite", `
+        <h2>Your client portal is ready</h2>
+        <p>Open this invite link and set your password:</p>
+        <p><a href="${inviteUrl}">${inviteUrl}</a></p>
+        <p>This link expires in 7 days.</p>
+      `);
+      sendJson(response, 200, { ok: true, inviteUrl, email: emailResult });
+    } catch (error) {
+      sendJson(response, 400, { error: "Invalid invite payload" });
+    }
+    return;
+  }
+
+  if (request.url === "/api/accept-invite" && request.method === "POST") {
+    try {
+      const body = await readBody(request);
+      const payload = JSON.parse(body);
+      const data = await readDb();
+      const token = String(payload.token || "");
+      const password = String(payload.password || "");
+      const invite = (data.invites || []).find((entry) => entry.token === token && !entry.used);
+
+      if (!invite || new Date(invite.expiresAt) < new Date()) {
+        sendJson(response, 400, { error: "Invite link is invalid or expired" });
+        return;
+      }
+      if (!password) {
+        sendJson(response, 400, { error: "Password is required" });
+        return;
+      }
+      if (data.users.some((user) => user.email === invite.email)) {
+        sendJson(response, 409, { error: "An account already exists with that email" });
+        return;
+      }
+
+      data.users.push({ id: crypto.randomUUID(), name: invite.name, email: invite.email, role: "client", clientId: invite.clientId, ...createPasswordRecord(password) });
+      invite.used = true;
+      await writeDb(data);
+      const loginUser = { name: invite.name, email: invite.email, role: "client", clientId: invite.clientId };
+      sendJson(response, 200, await stateForUser(loginUser));
+    } catch (error) {
+      sendJson(response, 400, { error: "Invalid invite acceptance payload" });
+    }
+    return;
+  }
+
+  if (request.url === "/api/forgot-password" && request.method === "POST") {
+    try {
+      const body = await readBody(request);
+      const payload = JSON.parse(body);
+      const data = await readDb();
+      const email = String(payload.email || "").trim().toLowerCase();
+      const user = data.users.find((entry) => entry.email === email);
+
+      if (!user) {
+        sendJson(response, 200, { ok: true });
+        return;
+      }
+
+      const token = createToken();
+      data.passwordResets = data.passwordResets || [];
+      data.passwordResets.push({ token, email, expiresAt: new Date(Date.now() + 1000 * 60 * 30).toISOString(), used: false });
+      await writeDb(data);
+      const resetUrl = `${APP_URL}?reset=${token}`;
+      const emailResult = await sendEmail(email, "Reset your ProjectFlow password", `
+        <h2>Password reset</h2>
+        <p>Use this link to set a new password:</p>
+        <p><a href="${resetUrl}">${resetUrl}</a></p>
+        <p>This link expires in 30 minutes.</p>
+      `);
+      sendJson(response, 200, { ok: true, resetUrl, email: emailResult });
+    } catch (error) {
+      sendJson(response, 400, { error: "Invalid forgot password payload" });
+    }
+    return;
+  }
+
+  if (request.url === "/api/reset-password" && request.method === "POST") {
+    try {
+      const body = await readBody(request);
+      const payload = JSON.parse(body);
+      const data = await readDb();
+      const token = String(payload.token || "");
+      const password = String(payload.password || "");
+      const reset = (data.passwordResets || []).find((entry) => entry.token === token && !entry.used);
+
+      if (!reset || new Date(reset.expiresAt) < new Date()) {
+        sendJson(response, 400, { error: "Reset link is invalid or expired" });
+        return;
+      }
+      if (!password) {
+        sendJson(response, 400, { error: "Password is required" });
+        return;
+      }
+
+      const user = data.users.find((entry) => entry.email === reset.email);
+      if (!user) {
+        sendJson(response, 400, { error: "Account not found" });
+        return;
+      }
+      Object.assign(user, createPasswordRecord(password));
+      delete user.password;
+      reset.used = true;
+      await writeDb(data);
+      sendJson(response, 200, { ok: true });
+    } catch (error) {
+      sendJson(response, 400, { error: "Invalid reset password payload" });
     }
     return;
   }
@@ -278,31 +485,8 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       
-      const RESEND_API_KEY = "re_bE2qCdns_Go7GE2h6fdQCU8TgkZ3VJw3u";
-      const resendResponse = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${RESEND_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          from: "Project Tracker <onboarding@resend.dev>",
-          to: Array.isArray(to) ? to : [to],
-          subject: subject,
-          html: html
-        })
-      });
-      
-      const resendData = await resendResponse.json();
-      
-      if (!resendResponse.ok) {
-        console.error("Resend Error:", resendData);
-        sendJson(response, 400, { error: "Failed to send email: " + (resendData.message || "Unknown error") });
-        return;
-      }
-      
-      console.log(`[EMAIL SENT] To: ${to} | Subject: ${subject}`);
-      sendJson(response, 200, { ok: true, id: resendData.id });
+      const emailResult = await sendEmail(to, subject, html);
+      sendJson(response, 200, emailResult);
     } catch (error) {
       console.error(error);
       sendJson(response, 500, { error: "Internal Server Error" });
