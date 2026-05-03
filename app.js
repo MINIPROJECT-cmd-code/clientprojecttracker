@@ -1206,20 +1206,20 @@ function handleActions(event) {
         </div>
       </div>
     `;
-    const printArea = $("#invoicePrintArea");
-    if (printArea) {
-      printArea.innerHTML = html;
-      
-      // Send Email
-      if (client?.email) {
-        postApi(`${API_BASE_URL}/api/email`, {
-          to: client.email,
-          subject: `Invoice ${payment.invoiceNumber || ""} from ProjectFlow`,
-          html: html
-        }).catch(console.error);
-      }
-
-      setTimeout(() => { window.print(); }, 100);
+    const recipients = [];
+    if (client?.email) recipients.push(client.email);
+    if (state.user?.email) recipients.push(state.user.email);
+    
+    if (recipients.length > 0) {
+      postApi(`${API_BASE_URL}/api/email`, {
+        to: recipients,
+        subject: `Invoice ${payment.invoiceNumber || ""} from ProjectFlow`,
+        html: html
+      })
+      .then(() => alert(`Invoice emailed securely to:\n${recipients.join("\n")}`))
+      .catch((err) => alert("Failed to send email: " + err.message));
+    } else {
+      alert("Cannot send invoice: No email address found for the client or your freelancer profile.");
     }
     return;
   }

@@ -292,7 +292,7 @@ const server = http.createServer(async (request, response) => {
         },
         body: JSON.stringify({
           from: "Project Tracker <onboarding@resend.dev>",
-          to: [to],
+          to: Array.isArray(to) ? to : [to],
           subject: subject,
           html: html
         })
