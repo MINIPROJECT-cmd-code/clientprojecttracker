@@ -43,6 +43,24 @@ function writeDb(data) {
 
 function publicState() {
   const { users, ...data } = readDb();
+  if (!data.user) {
+    return { ...emptyState, users: undefined };
+  }
+
+  if (data.user.role === "client") {
+    const clientId = data.user.clientId;
+    const projects = data.projects.filter((project) => project.clientId === clientId);
+    const projectIds = projects.map((project) => project.id);
+    return {
+      user: data.user,
+      clients: data.clients.filter((client) => client.id === clientId),
+      projects,
+      tasks: data.tasks.filter((task) => projectIds.includes(task.projectId)),
+      payments: data.payments.filter((payment) => projectIds.includes(payment.projectId)),
+      deadlines: data.deadlines.filter((deadline) => projectIds.includes(deadline.projectId))
+    };
+  }
+
   return data;
 }
 
@@ -154,8 +172,8 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      data.users.push({ id: crypto.randomUUID(), name, email, ...createPasswordRecord(password) });
-      data.user = { name, email };
+      data.users.push({ id: crypto.randomUUID(), name, email, role: "admin", ...createPasswordRecord(password) });
+      data.user = { name, email, role: "admin" };
       fs.writeFileSync(DB_FILE, JSON.stringify({ ...emptyState, ...data }, null, 2));
       sendJson(response, 200, publicState());
     } catch (error) {
@@ -178,11 +196,55 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      data.user = { name: user.name, email: user.email };
+      data.user = { name: user.name, email: user.email, role: user.role || "admin", clientId: user.clientId || null };
       fs.writeFileSync(DB_FILE, JSON.stringify({ ...emptyState, ...data }, null, 2));
       sendJson(response, 200, publicState());
     } catch (error) {
       sendJson(response, 400, { error: "Invalid login payload" });
+    }
+    return;
+  }
+
+  if (request.url === "/api/logout" && request.method === "POST") {
+    const data = readDb();
+    data.user = null;
+    fs.writeFileSync(DB_FILE, JSON.stringify({ ...emptyState, ...data }, null, 2));
+    sendJson(response, 200, publicState());
+    return;
+  }
+
+  if (request.url === "/api/client-user" && request.method === "POST") {
+    try {
+      const body = await readBody(request);
+      const payload = JSON.parse(body);
+      const data = readDb();
+      const currentUser = data.user || {};
+      const clientId = String(payload.clientId || "");
+      const client = data.clients.find((entry) => entry.id === clientId);
+      const email = String(payload.email || "").trim().toLowerCase();
+      const name = String(payload.name || client?.name || "").trim();
+      const password = String(payload.password || "");
+
+      if ((currentUser.role || "admin") !== "admin") {
+        sendJson(response, 403, { error: "Only freelancer accounts can create client portal users" });
+        return;
+      }
+
+      if (!client || !name || !email || !password) {
+        sendJson(response, 400, { error: "Client, name, email, and password are required" });
+        return;
+      }
+
+      if (data.users.some((user) => user.email === email)) {
+        sendJson(response, 409, { error: "An account already exists with that email" });
+        return;
+      }
+
+      data.users.push({ id: crypto.randomUUID(), name, email, role: "client", clientId, ...createPasswordRecord(password) });
+      fs.writeFileSync(DB_FILE, JSON.stringify({ ...emptyState, ...data }, null, 2));
+      sendJson(response, 200, publicState());
+    } catch (error) {
+      sendJson(response, 400, { error: "Invalid client user payload" });
     }
     return;
   }

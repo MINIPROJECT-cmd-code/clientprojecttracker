@@ -163,6 +163,31 @@ button {
   grid-template-columns: 250px minmax(0, 1fr);
 }
 
+.client-portal {
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.portal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.portal-header h1 {
+  margin: 0;
+}
+
+.portal-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -583,6 +608,7 @@ button {
   }
 
   .topbar,
+  .portal-header,
   .detail-hero,
   .item-row {
     align-items: stretch;

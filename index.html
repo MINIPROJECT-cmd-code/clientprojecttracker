@@ -229,6 +229,40 @@
       </section>
     </main>
 
+    <main id="clientPortalView" class="client-portal hidden">
+      <header class="portal-header">
+        <div>
+          <p class="eyebrow">Client Portal</p>
+          <h1 id="portalClientName">Project Progress</h1>
+        </div>
+        <div class="portal-actions">
+          <span id="portalUserEmail"></span>
+          <button id="portalLogoutButton" class="secondary-button" type="button">Log out</button>
+        </div>
+      </header>
+      <section id="portalSummary" class="metric-grid"></section>
+      <section class="split-layout">
+        <div>
+          <div class="section-heading"><h2>Your Projects</h2></div>
+          <div id="portalProjects" class="list-stack"></div>
+        </div>
+        <div>
+          <div class="section-heading"><h2>Upcoming Deadlines</h2></div>
+          <div id="portalDeadlines" class="list-stack"></div>
+        </div>
+      </section>
+      <section class="split-layout">
+        <div>
+          <div class="section-heading"><h2>Task Progress</h2></div>
+          <div id="portalTasks" class="list-stack"></div>
+        </div>
+        <div>
+          <div class="section-heading"><h2>Payments</h2></div>
+          <div id="portalPayments" class="list-stack"></div>
+        </div>
+      </section>
+    </main>
+
     <dialog id="editModal" class="edit-modal">
       <form id="editForm" method="dialog" class="edit-panel">
         <div class="item-row">

@@ -169,13 +169,35 @@ function setToday() {
 
 function showApp() {
   $("#loginView").classList.add("hidden");
+  $("#clientPortalView").classList.add("hidden");
   $("#appView").classList.remove("hidden");
   render();
+}
+
+function showClientPortal() {
+  $("#loginView").classList.add("hidden");
+  $("#appView").classList.add("hidden");
+  $("#clientPortalView").classList.remove("hidden");
+  renderClientPortal();
 }
 
 function showLogin() {
   $("#loginView").classList.remove("hidden");
   $("#appView").classList.add("hidden");
+  $("#clientPortalView").classList.add("hidden");
+}
+
+function showDashboardForRole() {
+  if (state.user?.role === "client") {
+    showClientPortal();
+  } else {
+    showApp();
+  }
+}
+
+function logout() {
+  postApi(`${API_BASE_URL}/api/logout`, {})
+    .finally(showLogin);
 }
 
 function setAuthMode(mode) {
@@ -303,6 +325,7 @@ function renderClients() {
               <p>${escapeHtml(client.email)} ${client.phone ? `| ${escapeHtml(client.phone)}` : ""}</p>
             </div>
             <div class="mini-actions">
+              <button type="button" data-create-client-user="${client.id}">Portal login</button>
               <button type="button" data-edit-client="${client.id}">Edit</button>
               <button type="button" data-delete-client="${client.id}">Delete</button>
             </div>
@@ -523,6 +546,105 @@ function renderProjectDetail() {
         </article>
       </section>
     </div>
+  `;
+}
+
+function renderClientPortal() {
+  const client = findClient(state.user?.clientId);
+  const projects = state.projects.filter((project) => project.clientId === state.user?.clientId);
+  const projectIds = projects.map((project) => project.id);
+  const tasks = state.tasks.filter((task) => projectIds.includes(task.projectId));
+  const payments = state.payments.filter((payment) => projectIds.includes(payment.projectId));
+  const deadlines = state.deadlines
+    .filter((deadline) => projectIds.includes(deadline.projectId))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const openTasks = tasks.filter((task) => task.status !== "Done").length;
+  const received = payments.reduce((sum, payment) => sum + paidAmount(payment), 0);
+  const balance = payments.reduce((sum, payment) => sum + balanceAmount(payment), 0);
+
+  $("#portalClientName").textContent = client?.name || "Client Portal";
+  $("#portalUserEmail").textContent = state.user?.email || "";
+  $("#portalSummary").innerHTML = `
+    <article class="metric-card"><span>${projects.length}</span><p>Projects</p></article>
+    <article class="metric-card"><span>${openTasks}</span><p>Open tasks</p></article>
+    <article class="metric-card"><span>${money(received)}</span><p>Paid</p></article>
+    <article class="metric-card"><span>${money(balance)}</span><p>Balance</p></article>
+  `;
+  $("#portalProjects").innerHTML = projects.length
+    ? projects.map(portalProjectCard).join("")
+    : emptyMessage("No projects yet", "Your freelancer has not shared projects with this company account.");
+  $("#portalDeadlines").innerHTML = deadlines.length
+    ? deadlines.map(portalDeadlineCard).join("")
+    : emptyMessage("No deadlines", "Upcoming deadlines will appear here.");
+  $("#portalTasks").innerHTML = tasks.length
+    ? tasks.map(portalTaskCard).join("")
+    : emptyMessage("No tasks", "Task progress will appear here.");
+  $("#portalPayments").innerHTML = payments.length
+    ? payments.map(portalPaymentCard).join("")
+    : emptyMessage("No payments", "Invoice and payment status will appear here.");
+}
+
+function portalProjectCard(project) {
+  const progress = projectProgress(project.id);
+  return `
+    <article class="item-card ${isPastDue(project.dueDate) && progress < 100 ? "overdue" : ""}">
+      <div>
+        <h3>${escapeHtml(project.name)}</h3>
+        <p>Due ${dateLabel(project.dueDate)} | Budget ${money(project.budget)}</p>
+      </div>
+      ${project.notes ? `<p class="note-text">${escapeHtml(project.notes)}</p>` : ""}
+      <div class="progress-track"><div class="progress-bar" style="width: ${progress}%"></div></div>
+      <div class="pill-row">
+        <span class="pill green">${progress}% complete</span>
+        ${isPastDue(project.dueDate) && progress < 100 ? `<span class="pill red">Overdue</span>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function portalTaskCard(task) {
+  const project = findProject(task.projectId);
+  const statusClass = task.status === "Done" ? "green" : task.status === "In Progress" ? "blue" : "amber";
+  return `
+    <article class="item-card ${isTaskOverdue(task) ? "overdue" : ""}">
+      <h3>${escapeHtml(task.title)}</h3>
+      <p>${escapeHtml(project?.name || "No project")} | Due ${dateLabel(task.dueDate)}</p>
+      <div class="pill-row">
+        <span class="pill ${statusClass}">${task.status}</span>
+        ${isTaskOverdue(task) ? `<span class="pill red">Overdue</span>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function portalPaymentCard(payment) {
+  const project = findProject(payment.projectId);
+  const statusClass = payment.status === "Received" ? "green" : payment.status === "Overdue" ? "red" : "amber";
+  return `
+    <article class="item-card ${isPaymentOverdue(payment) ? "overdue" : ""}">
+      <h3>${money(payment.amount)}</h3>
+      <p>${escapeHtml(project?.name || "No project")} | ${escapeHtml(payment.invoiceNumber || "No invoice")} | Due ${dateLabel(payment.date)}</p>
+      <p>Paid ${money(paidAmount(payment))} | Balance ${money(balanceAmount(payment))}</p>
+      <div class="pill-row">
+        <span class="pill ${statusClass}">${payment.status}</span>
+        ${isPaymentOverdue(payment) ? `<span class="pill red">Overdue</span>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function portalDeadlineCard(deadline) {
+  const project = findProject(deadline.projectId);
+  const priorityClass = deadline.priority === "Critical" ? "red" : deadline.priority === "High" ? "amber" : "blue";
+  return `
+    <article class="item-card ${isDeadlineOverdue(deadline) ? "overdue" : ""}">
+      <h3>${escapeHtml(deadline.title)}</h3>
+      <p>${escapeHtml(project?.name || "No project")} | ${dateLabel(deadline.date)}</p>
+      <div class="pill-row">
+        <span class="pill ${priorityClass}">${deadline.priority}</span>
+        ${isDeadlineOverdue(deadline) ? `<span class="pill red">Overdue</span>` : ""}
+      </div>
+    </article>
   `;
 }
 
@@ -764,6 +886,30 @@ function saveEdit(event) {
   render();
 }
 
+function createClientUser(clientId) {
+  const client = findClient(clientId);
+  if (!client) return;
+
+  const name = prompt("Company user name", client.name);
+  if (!name) return;
+  const email = prompt("Company login email", client.email);
+  if (!email) return;
+  const password = prompt("Temporary password for company login");
+  if (!password) return;
+
+  postApi(`${API_BASE_URL}/api/client-user`, {
+    clientId,
+    name: name.trim(),
+    email: email.trim().toLowerCase(),
+    password
+  })
+    .then(() => {
+      alert("Client portal login created.");
+      render();
+    })
+    .catch((error) => alert(error.message));
+}
+
 function handleActions(event) {
   const button = event.target.closest("button");
   if (!button) return;
@@ -775,6 +921,7 @@ function handleActions(event) {
 
   const actionMap = [
     ["viewProject", "viewProject"],
+    ["createClientUser", "createClientUser"],
     ["editClient", "editClient"],
     ["editProject", "editProject"],
     ["editTask", "editTask"],
@@ -800,6 +947,7 @@ function handleActions(event) {
     showProjectDetail(itemId);
     return;
   }
+  if (action === "createClientUser") return createClientUser(itemId);
   if (action === "editClient") return openEdit("client", itemId);
   if (action === "editProject") return openEdit("project", itemId);
   if (action === "editTask") return openEdit("task", itemId);
@@ -866,7 +1014,7 @@ $("#loginForm").addEventListener("submit", (event) => {
   const email = $("#loginEmail").value.trim().toLowerCase();
   const password = $("#loginPassword").value;
   postApi(`${API_BASE_URL}/api/login`, { email, password })
-    .then(showApp)
+    .then(showDashboardForRole)
     .catch((error) => alert(error.message));
 });
 
@@ -878,15 +1026,17 @@ $("#signupForm").addEventListener("submit", (event) => {
   postApi(`${API_BASE_URL}/api/signup`, { name, email, password })
     .then(() => {
       event.target.reset();
-      showApp();
+      showDashboardForRole();
     })
     .catch((error) => alert(error.message));
 });
 
 $("#logoutButton").addEventListener("click", () => {
-  state.user = null;
-  saveState();
-  showLogin();
+  logout();
+});
+
+$("#portalLogoutButton").addEventListener("click", () => {
+  logout();
 });
 
 $("#showLogin").addEventListener("click", () => setAuthMode("login"));
@@ -911,7 +1061,7 @@ $$(".nav-button").forEach((button) => {
 async function init() {
   await loadState();
   if (state.user) {
-    showApp();
+    showDashboardForRole();
   } else {
     showLogin();
   }
