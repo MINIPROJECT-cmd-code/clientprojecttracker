@@ -1002,7 +1002,7 @@ function editConfig(type, itemId) {
         { name: "name", label: "Project name", value: item.name, required: true },
         { name: "clientId", label: "Client", type: "select", value: item.clientId, options: clientOptions, required: true },
         { name: "budget", label: "Budget", type: "number", value: item.budget },
-        { name: "currency", label: "Currency", type: "select", value: item.currency || "USD", options: [{value:"USD",label:"USD"},{value:"EUR",label:"EUR"},{value:"GBP",label:"GBP"},{value:"AUD",label:"AUD"}] },
+        { name: "currency", label: "Currency", type: "select", value: item.currency || "USD", options: [{value:"USD",label:"USD"},{value:"EUR",label:"EUR"},{value:"GBP",label:"GBP"},{value:"AUD",label:"AUD"},{value:"INR",label:"INR"}] },
         { name: "taxRate", label: "Tax Rate (%)", type: "number", value: item.taxRate || 0 },
         { name: "dueDate", label: "Due date", type: "date", value: item.dueDate, required: true },
         { name: "notes", label: "Project notes", type: "textarea", value: item.notes }
@@ -1157,52 +1157,52 @@ function handleActions(event) {
     const grandTotal = subtotal + taxAmount;
 
     const html = `
-      <div class="invoice-print-view">
-        <div class="invoice-header">
+      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px; color: #1e293b; line-height: 1.6;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 40px; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px;">
           <div>
-            <h1>INVOICE</h1>
-            <p>Invoice #: ${escapeHtml(payment.invoiceNumber || "N/A")}</p>
-            <p>Date: ${dateLabel(payment.date)}</p>
+            <h1 style="margin: 0; color: #2563eb; font-size: 32px; letter-spacing: 1px;">INVOICE</h1>
+            <p style="margin: 5px 0 0 0; font-weight: bold;">Invoice #: ${escapeHtml(payment.invoiceNumber || "N/A")}</p>
+            <p style="margin: 5px 0 0 0; color: #64748b;">Date: ${dateLabel(payment.date)}</p>
           </div>
-          <div style="text-align: right">
-            <h2>ProjectFlow Freelancer</h2>
-            <p>${escapeHtml(state.user?.name || "")}</p>
-            <p>${escapeHtml(state.user?.email || "")}</p>
+          <div style="text-align: right;">
+            <h2 style="margin: 0; font-size: 20px;">ProjectFlow Freelancer</h2>
+            <p style="margin: 5px 0 0 0; color: #64748b;">${escapeHtml(state.user?.name || "")}</p>
+            <p style="margin: 5px 0 0 0; color: #64748b;">${escapeHtml(state.user?.email || "")}</p>
           </div>
         </div>
-        <div class="invoice-details">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 40px;">
           <div>
-            <h3>Bill To:</h3>
-            <p><strong>${escapeHtml(client?.name || "Client")}</strong></p>
-            <p>${escapeHtml(client?.email || "")}</p>
+            <h3 style="margin: 0 0 10px 0; color: #64748b; font-size: 14px; text-transform: uppercase;">Bill To:</h3>
+            <p style="margin: 0; font-size: 18px;"><strong>${escapeHtml(client?.name || "Client")}</strong></p>
+            <p style="margin: 5px 0 0 0; color: #64748b;">${escapeHtml(client?.email || "")}</p>
           </div>
-          <div>
-            <h3>Project:</h3>
-            <p>${escapeHtml(project?.name || "Project")}</p>
+          <div style="text-align: right;">
+            <h3 style="margin: 0 0 10px 0; color: #64748b; font-size: 14px; text-transform: uppercase;">Project:</h3>
+            <p style="margin: 0; font-size: 18px;">${escapeHtml(project?.name || "Project")}</p>
           </div>
         </div>
-        <table class="invoice-table">
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 40px;">
           <thead>
             <tr>
-              <th>Description</th>
-              <th style="text-align: right">Amount</th>
+              <th style="text-align: left; padding: 12px; border-bottom: 2px solid #e2e8f0; color: #64748b;">Description</th>
+              <th style="text-align: right; padding: 12px; border-bottom: 2px solid #e2e8f0; color: #64748b;">Amount</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Payment for ${escapeHtml(project?.name || "Project")}</td>
-              <td style="text-align: right">${money(subtotal, currency)}</td>
+              <td style="padding: 16px 12px; border-bottom: 1px solid #f1f5f9;">Payment for ${escapeHtml(project?.name || "Project")}</td>
+              <td style="text-align: right; padding: 16px 12px; border-bottom: 1px solid #f1f5f9;">${money(subtotal, currency)}</td>
             </tr>
             ${taxRate > 0 ? `
             <tr>
-              <td style="text-align: right">Tax (${taxRate}%)</td>
-              <td style="text-align: right">${money(taxAmount, currency)}</td>
+              <td style="text-align: right; padding: 16px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b;">Tax (${taxRate}%)</td>
+              <td style="text-align: right; padding: 16px 12px; border-bottom: 1px solid #f1f5f9;">${money(taxAmount, currency)}</td>
             </tr>` : ""}
           </tbody>
         </table>
-        <div class="invoice-total">
-          <p>Grand Total: ${money(grandTotal, currency)}</p>
-          <p style="font-size: 16px; color: #666">Paid: ${money(paidAmount(payment), currency)} | Balance Due: ${money(grandTotal - paidAmount(payment), currency)}</p>
+        <div style="text-align: right; border-top: 2px solid #e2e8f0; padding-top: 20px;">
+          <p style="margin: 0 0 10px 0; font-size: 24px; font-weight: bold; color: #0f172a;">Grand Total: ${money(grandTotal, currency)}</p>
+          <p style="margin: 0; font-size: 16px; color: #64748b;">Paid: <span style="color: #10b981;">${money(paidAmount(payment), currency)}</span> | Balance Due: <span style="color: #ef4444;">${money(grandTotal - paidAmount(payment), currency)}</span></p>
         </div>
       </div>
     `;
@@ -1290,6 +1290,7 @@ function handleFilterInput(event) {
 function logout() {
   postApi(`${API_BASE_URL}/api/logout`)
     .then(() => {
+      state.user = null;
       localStorage.removeItem("theme");
       document.body.classList.remove("dark-theme");
       showLogin();
@@ -1302,7 +1303,10 @@ $("#loginForm").addEventListener("submit", (event) => {
   const email = $("#loginEmail").value.trim().toLowerCase();
   const password = $("#loginPassword").value;
   postApi(`${API_BASE_URL}/api/login`, { email, password })
-    .then(showDashboardForRole)
+    .then((data) => {
+      Object.assign(state, data);
+      showDashboardForRole();
+    })
     .catch((error) => alert(error.message));
 });
 
@@ -1312,7 +1316,8 @@ $("#signupForm").addEventListener("submit", (event) => {
   const email = $("#signupEmail").value.trim().toLowerCase();
   const password = $("#signupPassword").value;
   postApi(`${API_BASE_URL}/api/signup`, { name, email, password })
-    .then(() => {
+    .then((data) => {
+      Object.assign(state, data);
       event.target.reset();
       showDashboardForRole();
     })

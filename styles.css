@@ -784,3 +784,24 @@ button {
 .markdown-body a {
   color: var(--primary);
 }
+
+@media print {
+  #loginView, #appView, #clientPortalView, #editModal {
+    display: none !important;
+  }
+  #invoicePrintArea {
+    display: block !important;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    background: white;
+    color: black;
+  }
+  .invoice-print-view {
+    padding: 0;
+    box-shadow: none;
+    border: none;
+  }
+}
