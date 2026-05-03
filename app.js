@@ -8,12 +8,16 @@ const emptyState = {
   projects: [],
   tasks: [],
   payments: [],
-  deadlines: []
+  deadlines: [],
+  timeLogs: [],
+  attachments: []
 };
 
 let state = structuredClone(emptyState);
 let selectedProjectId = null;
 let editContext = null;
+let paymentChartInstance = null;
+let taskChartInstance = null;
 
 const filters = {
   clientSearch: "",
@@ -24,7 +28,9 @@ const filters = {
   paymentSearch: "",
   paymentStatusFilter: "",
   deadlineSearch: "",
-  deadlinePriorityFilter: ""
+  deadlinePriorityFilter: "",
+  timelogSearch: "",
+  timelogTaskFilter: ""
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -107,6 +113,15 @@ function escapeHtml(value) {
     '"': "&quot;",
     "'": "&#039;"
   })[char]);
+}
+
+function parseMarkdown(value) {
+  if (!value) return "";
+  try {
+    return marked.parse(value);
+  } catch(e) {
+    return escapeHtml(value);
+  }
 }
 
 function findClient(idValue) {
@@ -236,6 +251,7 @@ function render() {
   renderTasks();
   renderPayments();
   renderDeadlines();
+  renderTimelogs();
 }
 
 function renderUserProfile() {
@@ -254,6 +270,14 @@ function renderSelects() {
   $("#taskProject").innerHTML = projectOptions;
   $("#paymentProject").innerHTML = projectOptions;
   $("#deadlineProject").innerHTML = projectOptions;
+  const taskOptions = optionList(state.tasks.map(t => ({ id: t.id, name: t.title })), "Choose task");
+  const timelogTaskEl = $("#timelogTask");
+  if (timelogTaskEl) timelogTaskEl.innerHTML = taskOptions;
+  const timelogTaskFilterEl = $("#timelogTaskFilter");
+  if (timelogTaskFilterEl) {
+    timelogTaskFilterEl.innerHTML = optionList(state.tasks.map(t => ({ id: t.id, name: t.title })), "All tasks");
+    timelogTaskFilterEl.value = filters.timelogTaskFilter;
+  }
 }
 
 function renderOverview() {
@@ -280,34 +304,70 @@ function renderOverview() {
 function renderCharts() {
   const received = state.payments.reduce((sum, payment) => sum + paidAmount(payment), 0);
   const pending = state.payments.reduce((sum, payment) => sum + balanceAmount(payment), 0);
-  const totalPayments = Math.max(1, received + pending);
   const done = state.tasks.filter((task) => task.status === "Done").length;
   const inProgress = state.tasks.filter((task) => task.status === "In Progress").length;
   const pendingTasks = state.tasks.filter((task) => task.status === "Pending").length;
-  const totalTasks = Math.max(1, state.tasks.length);
 
   $("#chartGrid").innerHTML = `
     <article class="chart-card">
       <h2>Payments</h2>
-      ${chartRow("Received", money(received), (received / totalPayments) * 100, "sky")}
-      ${chartRow("Balance", money(pending), (pending / totalPayments) * 100, "amber")}
+      <div style="position: relative; height:200px; width:100%">
+        <canvas id="paymentChart"></canvas>
+      </div>
     </article>
     <article class="chart-card">
       <h2>Task Status</h2>
-      ${chartRow("Done", done, (done / totalTasks) * 100, "sky")}
-      ${chartRow("In Progress", inProgress, (inProgress / totalTasks) * 100, "")}
-      ${chartRow("Pending", pendingTasks, (pendingTasks / totalTasks) * 100, "amber")}
+      <div style="position: relative; height:200px; width:100%">
+        <canvas id="taskChart"></canvas>
+      </div>
     </article>
   `;
-}
 
-function chartRow(label, value, width, tone) {
-  return `
-    <div class="chart-row">
-      <div class="chart-label"><span>${label}</span><span>${value}</span></div>
-      <div class="chart-track"><div class="chart-fill ${tone}" style="width: ${Math.min(100, width)}%"></div></div>
-    </div>
-  `;
+  if (paymentChartInstance) paymentChartInstance.destroy();
+  if (taskChartInstance) taskChartInstance.destroy();
+
+  const isDark = document.body.classList.contains("dark-theme");
+  const textColor = isDark ? "#94a3b8" : "#64748b";
+
+  Chart.defaults.color = textColor;
+  
+  const pCtx = document.getElementById("paymentChart");
+  if (pCtx) {
+    paymentChartInstance = new Chart(pCtx, {
+      type: "bar",
+      data: {
+        labels: ["Received", "Balance"],
+        datasets: [{
+          label: "Amount",
+          data: [received, pending],
+          backgroundColor: ["#0284c7", "#b7791f"]
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+
+  const tCtx = document.getElementById("taskChart");
+  if (tCtx) {
+    taskChartInstance = new Chart(tCtx, {
+      type: "doughnut",
+      data: {
+        labels: ["Done", "In Progress", "Pending"],
+        datasets: [{
+          data: [done, inProgress, pendingTasks],
+          backgroundColor: ["#0284c7", "#2563eb", "#b7791f"]
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false
+      }
+    });
+  }
 }
 
 function renderClients() {
@@ -372,7 +432,7 @@ function projectCard(project) {
           <button type="button" data-delete-project="${project.id}">Delete</button>
         </div>
       </div>
-      ${project.notes ? `<p class="note-text">${escapeHtml(project.notes)}</p>` : ""}
+      ${project.notes ? `<div class="note-text markdown-body">${parseMarkdown(project.notes)}</div>` : ""}
       <div class="progress-track" aria-label="${progress}% complete">
         <div class="progress-bar" style="width: ${progress}%"></div>
       </div>
@@ -447,6 +507,7 @@ function paymentCard(payment) {
           <p>Paid ${money(paidAmount(payment))} | Balance ${money(balanceAmount(payment))} | ${escapeHtml(payment.method || "No method")}</p>
         </div>
         <div class="mini-actions">
+          <button type="button" data-print-invoice="${payment.id}">Invoice</button>
           <button type="button" data-edit-payment="${payment.id}">Edit</button>
           <button type="button" data-cycle-payment="${payment.id}">Update status</button>
           <button type="button" data-delete-payment="${payment.id}">Delete</button>
@@ -498,6 +559,44 @@ function deadlineCard(deadline) {
   `;
 }
 
+function renderTimelogs() {
+  const query = filters.timelogSearch;
+  const taskId = filters.timelogTaskFilter;
+  const timelogs = [...state.timeLogs]
+    .filter((log) => {
+      const task = state.tasks.find(t => t.id === log.taskId);
+      const project = findProject(task?.projectId);
+      return (!query || searchMatch.call(query, log.notes, task?.title, project?.name)) && (!taskId || log.taskId === taskId);
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const listEl = $("#timelogList");
+  if (listEl) {
+    listEl.innerHTML = timelogs.length
+      ? timelogs.map(timelogCard).join("")
+      : emptyMessage("No time logs found", "Log time using the form above.");
+  }
+}
+
+function timelogCard(log) {
+  const task = state.tasks.find(t => t.id === log.taskId);
+  const project = findProject(task?.projectId);
+  return `
+    <article class="item-card">
+      <div class="item-row">
+        <div>
+          <h3>${log.hours} hours - ${escapeHtml(task?.title || "No task")}</h3>
+          <p>${escapeHtml(project?.name || "No project")} | ${dateLabel(log.date)}</p>
+        </div>
+        <div class="mini-actions">
+          <button type="button" data-delete-timelog="${log.id}">Delete</button>
+        </div>
+      </div>
+      ${log.notes ? `<p class="note-text">${escapeHtml(log.notes)}</p>` : ""}
+    </article>
+  `;
+}
+
 function renderProjectDetail() {
   const container = $("#projectDetailContent");
   if (!container) return;
@@ -512,6 +611,7 @@ function renderProjectDetail() {
   const tasks = state.tasks.filter((task) => task.projectId === project.id);
   const payments = state.payments.filter((payment) => payment.projectId === project.id);
   const deadlines = state.deadlines.filter((deadline) => deadline.projectId === project.id);
+  const projectAttachments = state.attachments.filter(att => att.entityType === 'project' && att.entityId === project.id);
   const received = payments.reduce((sum, payment) => sum + paidAmount(payment), 0);
   const pending = payments.reduce((sum, payment) => sum + balanceAmount(payment), 0);
 
@@ -521,7 +621,7 @@ function renderProjectDetail() {
         <p class="eyebrow">${escapeHtml(client?.name || "No client")}</p>
         <h2>${escapeHtml(project.name)}</h2>
         <p class="muted">Due ${dateLabel(project.dueDate)} | Budget ${money(project.budget)}</p>
-        ${project.notes ? `<p class="note-text">${escapeHtml(project.notes)}</p>` : ""}
+        ${project.notes ? `<div class="note-text markdown-body" style="margin-top: 10px">${parseMarkdown(project.notes)}</div>` : ""}
       </div>
       <div class="mini-actions"><button type="button" data-edit-project="${project.id}">Edit project</button></div>
     </section>
@@ -536,6 +636,16 @@ function renderProjectDetail() {
       <section><div class="section-heading"><h2>Tasks</h2></div><div class="list-stack">${tasks.length ? tasks.map(taskCard).join("") : emptyMessage("No tasks", "Add tasks from the Tasks tab.")}</div></section>
       <section><div class="section-heading"><h2>Payments</h2></div><div class="list-stack">${payments.length ? payments.map(paymentCard).join("") : emptyMessage("No payments", "Add payments from the Payments tab.")}</div></section>
       <section><div class="section-heading"><h2>Deadlines</h2></div><div class="list-stack">${deadlines.length ? deadlines.map(deadlineCard).join("") : emptyMessage("No deadlines", "Add deadlines from the Deadlines tab.")}</div></section>
+      <section>
+        <div class="section-heading"><h2>Attachments</h2></div>
+        <div class="attachment-list">
+          ${projectAttachments.length ? projectAttachments.map(att => `<a href="${API_BASE_URL}${att.url}" target="_blank" class="attachment-pill">📎 ${escapeHtml(att.filename)}</a>`).join("") : emptyMessage("No attachments", "Upload files for this project.")}
+        </div>
+        <div style="margin-top: 14px">
+          <input type="file" id="uploadAttachmentInput" data-entity="project" data-entity-id="${project.id}" style="display:none">
+          <button class="secondary-button" type="button" onclick="document.getElementById('uploadAttachmentInput').click()">Upload File</button>
+        </div>
+      </section>
       <section>
         <div class="section-heading"><h2>Client</h2></div>
         <article class="item-card">
@@ -721,6 +831,20 @@ function addDeadline(event) {
     projectId: $("#deadlineProject").value,
     date: $("#deadlineDate").value,
     priority: $("#deadlinePriority").value
+  });
+  event.target.reset();
+  saveState();
+  render();
+}
+
+function addTimelog(event) {
+  event.preventDefault();
+  state.timeLogs.push({
+    id: id(),
+    taskId: $("#timelogTask").value,
+    hours: Number($("#timelogHours").value || 0),
+    notes: $("#timelogNotes").value.trim(),
+    date: $("#timelogDate").value
   });
   event.target.reset();
   saveState();
@@ -932,8 +1056,10 @@ function handleActions(event) {
     ["deleteTask", "deleteTask"],
     ["deletePayment", "deletePayment"],
     ["deleteDeadline", "deleteDeadline"],
+    ["deleteTimelog", "deleteTimelog"],
     ["cycleTask", "cycleTask"],
-    ["cyclePayment", "cyclePayment"]
+    ["cyclePayment", "cyclePayment"],
+    ["printInvoice", "printInvoice"]
   ];
 
   const match = actionMap.find(([, datasetKey]) => button.dataset[datasetKey]);
@@ -947,6 +1073,64 @@ function handleActions(event) {
     showProjectDetail(itemId);
     return;
   }
+  if (action === "printInvoice") {
+    const payment = state.payments.find(p => p.id === itemId);
+    if (!payment) return;
+    const project = findProject(payment.projectId);
+    const client = findClient(project?.clientId);
+    const html = `
+      <div class="invoice-print-view">
+        <div class="invoice-header">
+          <div>
+            <h1>INVOICE</h1>
+            <p>Invoice #: ${escapeHtml(payment.invoiceNumber || "N/A")}</p>
+            <p>Date: ${dateLabel(payment.date)}</p>
+          </div>
+          <div style="text-align: right">
+            <h2>ProjectFlow Freelancer</h2>
+            <p>${escapeHtml(state.user?.name || "")}</p>
+            <p>${escapeHtml(state.user?.email || "")}</p>
+          </div>
+        </div>
+        <div class="invoice-details">
+          <div>
+            <h3>Bill To:</h3>
+            <p><strong>${escapeHtml(client?.name || "Client")}</strong></p>
+            <p>${escapeHtml(client?.email || "")}</p>
+          </div>
+          <div>
+            <h3>Project:</h3>
+            <p>${escapeHtml(project?.name || "Project")}</p>
+          </div>
+        </div>
+        <table class="invoice-table">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th style="text-align: right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Payment for ${escapeHtml(project?.name || "Project")}</td>
+              <td style="text-align: right">${money(payment.amount)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="invoice-total">
+          <p>Total: ${money(payment.amount)}</p>
+          <p style="font-size: 16px; color: #666">Paid: ${money(paidAmount(payment))} | Balance Due: ${money(balanceAmount(payment))}</p>
+        </div>
+      </div>
+    `;
+    const printArea = $("#invoicePrintArea");
+    if (printArea) {
+      printArea.innerHTML = html;
+      setTimeout(() => { window.print(); }, 100);
+    }
+    return;
+  }
+
   if (action === "createClientUser") return createClientUser(itemId);
   if (action === "editClient") return openEdit("client", itemId);
   if (action === "editProject") return openEdit("project", itemId);
@@ -958,6 +1142,7 @@ function handleActions(event) {
   if (action === "deleteTask") changed = confirmDelete("task") && (deleteBy("tasks", itemId), true);
   if (action === "deletePayment") changed = confirmDelete("payment") && (deleteBy("payments", itemId), true);
   if (action === "deleteDeadline") changed = confirmDelete("deadline") && (deleteBy("deadlines", itemId), true);
+  if (action === "deleteTimelog") changed = confirmDelete("time log") && (deleteBy("timeLogs", itemId), true);
   if (action === "cycleTask") cycleStatus("tasks", itemId, ["Pending", "In Progress", "Done"]);
   if (action === "cyclePayment") cycleStatus("payments", itemId, ["Pending", "Received", "Overdue"]);
 
@@ -1047,9 +1232,56 @@ $("#projectForm").addEventListener("submit", addProject);
 $("#taskForm").addEventListener("submit", addTask);
 $("#paymentForm").addEventListener("submit", addPayment);
 $("#deadlineForm").addEventListener("submit", addDeadline);
+const timelogForm = $("#timelogForm");
+if (timelogForm) timelogForm.addEventListener("submit", addTimelog);
+function handleFileUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const entityType = input.dataset.entity;
+  const entityId = input.dataset.entityId;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const base64 = e.target.result;
+    try {
+      input.disabled = true;
+      const res = await fetch(`${API_BASE_URL}/api/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, content: base64 })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+
+      state.attachments.push({
+        id: id(),
+        entityType,
+        entityId,
+        filename: data.filename,
+        url: data.url,
+        date: new Date().toISOString().split("T")[0]
+      });
+      saveState();
+      render();
+    } catch(err) {
+      alert("Failed to upload: " + err.message);
+    } finally {
+      input.disabled = false;
+      input.value = "";
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
 $("#appView").addEventListener("click", handleActions);
 $("#appView").addEventListener("input", handleFilterInput);
-$("#appView").addEventListener("change", handleFilterInput);
+$("#appView").addEventListener("change", (e) => {
+  if (e.target.id === "uploadAttachmentInput") {
+    handleFileUpload(e.target);
+  } else {
+    handleFilterInput(e);
+  }
+});
 $("#editForm").addEventListener("submit", saveEdit);
 $("#cancelEdit").addEventListener("click", () => $("#editModal").close());
 $("#closeEdit").addEventListener("click", () => $("#editModal").close());
@@ -1057,6 +1289,18 @@ $("#closeEdit").addEventListener("click", () => $("#editModal").close());
 $$(".nav-button").forEach((button) => {
   button.addEventListener("click", () => switchTab(button.dataset.tab));
 });
+
+const themeToggle = document.getElementById("themeToggle");
+const currentTheme = localStorage.getItem("theme");
+if (currentTheme === "dark") document.body.classList.add("dark-theme");
+if (themeToggle) {
+  themeToggle.addEventListener("click", () => {
+    document.body.classList.toggle("dark-theme");
+    const theme = document.body.classList.contains("dark-theme") ? "dark" : "light";
+    localStorage.setItem("theme", theme);
+    renderCharts();
+  });
+}
 
 async function init() {
   await loadState();

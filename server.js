@@ -14,19 +14,30 @@ const emptyState = {
   projects: [],
   tasks: [],
   payments: [],
-  deadlines: []
+  deadlines: [],
+  timeLogs: [],
+  attachments: []
 };
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8"
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".pdf": "application/pdf"
 };
 
 function ensureDb() {
   if (!fs.existsSync(DB_FILE)) {
     fs.writeFileSync(DB_FILE, JSON.stringify(emptyState, null, 2));
+  }
+  const uploadsDir = path.join(ROOT, "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir);
   }
 }
 
@@ -57,7 +68,19 @@ function publicState() {
       projects,
       tasks: data.tasks.filter((task) => projectIds.includes(task.projectId)),
       payments: data.payments.filter((payment) => projectIds.includes(payment.projectId)),
-      deadlines: data.deadlines.filter((deadline) => projectIds.includes(deadline.projectId))
+      deadlines: data.deadlines.filter((deadline) => projectIds.includes(deadline.projectId)),
+      timeLogs: data.timeLogs ? data.timeLogs.filter((log) => {
+        const task = data.tasks.find(t => t.id === log.taskId);
+        return task && projectIds.includes(task.projectId);
+      }) : [],
+      attachments: data.attachments ? data.attachments.filter((att) => {
+        if (att.entityType === 'project') return projectIds.includes(att.entityId);
+        if (att.entityType === 'task') {
+          const task = data.tasks.find(t => t.id === att.entityId);
+          return task && projectIds.includes(task.projectId);
+        }
+        return false;
+      }) : []
     };
   }
 
@@ -94,7 +117,7 @@ function readBody(request) {
     let body = "";
     request.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 1_000_000) {
+      if (body.length > 20_000_000) { // Increased limit to 20MB for base64 uploads
         request.destroy();
         reject(new Error("Request body too large"));
       }
@@ -245,6 +268,40 @@ const server = http.createServer(async (request, response) => {
       sendJson(response, 200, publicState());
     } catch (error) {
       sendJson(response, 400, { error: "Invalid client user payload" });
+    }
+    return;
+  }
+
+  if (request.url === "/api/upload" && request.method === "POST") {
+    try {
+      const body = await readBody(request);
+      const payload = JSON.parse(body);
+      
+      const filename = payload.filename || crypto.randomUUID();
+      const contentBase64 = payload.content;
+      
+      if (!contentBase64) {
+        sendJson(response, 400, { error: "No content provided" });
+        return;
+      }
+
+      // Handle data URI prefix if present e.g. "data:image/png;base64,iVBORw0K..."
+      const base64Data = contentBase64.replace(/^data:.*,/, "");
+      
+      const buffer = Buffer.from(base64Data, "base64");
+      
+      // Ensure unique filename
+      const ext = path.extname(filename);
+      const name = path.basename(filename, ext);
+      const safeFilename = `${name}-${crypto.randomUUID().slice(0,8)}${ext}`;
+      
+      const filepath = path.join(ROOT, "uploads", safeFilename);
+      fs.writeFileSync(filepath, buffer);
+      
+      sendJson(response, 200, { url: `/uploads/${safeFilename}`, filename: safeFilename });
+    } catch (error) {
+      console.error(error);
+      sendJson(response, 500, { error: "Failed to upload file" });
     }
     return;
   }

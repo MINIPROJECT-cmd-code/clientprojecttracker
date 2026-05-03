@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Client Project Tracker</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   </head>
   <body>
     <main id="loginView" class="login-shell">
@@ -60,8 +62,12 @@
           <button class="nav-button" data-tab="tasks">Tasks</button>
           <button class="nav-button" data-tab="payments">Payments</button>
           <button class="nav-button" data-tab="deadlines">Deadlines</button>
+          <button class="nav-button" data-tab="timelogs">Time Logs</button>
         </nav>
-        <button id="logoutButton" class="ghost-button" type="button">Log out</button>
+        <div style="display: grid; gap: 10px;">
+          <button id="themeToggle" class="secondary-button" type="button">Toggle Dark Mode</button>
+          <button id="logoutButton" class="ghost-button" type="button">Log out</button>
+        </div>
       </aside>
 
       <section class="content">
@@ -226,6 +232,21 @@
           </form>
           <div id="deadlineList" class="list-stack"></div>
         </section>
+
+        <section id="timelogs" class="tab-panel hidden">
+          <div class="tool-row">
+            <input id="timelogSearch" data-filter="timelogSearch" placeholder="Search time logs">
+            <select id="timelogTaskFilter" data-filter="timelogTaskFilter"></select>
+          </div>
+          <form id="timelogForm" class="module-form">
+            <select id="timelogTask" required></select>
+            <input id="timelogHours" type="number" min="0.1" step="0.1" placeholder="Hours spent" required>
+            <input id="timelogNotes" placeholder="What did you work on?" required>
+            <input id="timelogDate" type="date" required>
+            <button class="primary-button" type="submit">Log time</button>
+          </form>
+          <div id="timelogList" class="list-stack"></div>
+        </section>
       </section>
     </main>
 
@@ -279,6 +300,8 @@
         </div>
       </form>
     </dialog>
+
+    <div id="invoicePrintArea" class="hidden"></div>
 
     <script src="config.js"></script>
     <script src="app.js"></script>
