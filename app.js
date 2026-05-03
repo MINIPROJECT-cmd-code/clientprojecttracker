@@ -1645,12 +1645,15 @@ $("#loginForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const email = $("#loginEmail").value.trim().toLowerCase();
   const password = $("#loginPassword").value;
+  const button = event.target.querySelector("button[type='submit']");
+  const restore = setLoading(button, "Logging in...");
   postApi(`${API_BASE_URL}/api/login`, { email, password })
     .then((data) => {
       Object.assign(state, data);
       showDashboardForRole();
     })
-    .catch((error) => alert(error.message));
+    .catch((error) => alert(error.message))
+    .finally(restore);
 });
 
 $("#signupForm").addEventListener("submit", (event) => {
@@ -1658,13 +1661,16 @@ $("#signupForm").addEventListener("submit", (event) => {
   const name = $("#signupName").value.trim();
   const email = $("#signupEmail").value.trim().toLowerCase();
   const password = $("#signupPassword").value;
+  const button = event.target.querySelector("button[type='submit']");
+  const restore = setLoading(button, "Creating account...");
   postApi(`${API_BASE_URL}/api/signup`, { name, email, password })
     .then((data) => {
       Object.assign(state, data);
       event.target.reset();
       showDashboardForRole();
     })
-    .catch((error) => alert(error.message));
+    .catch((error) => alert(error.message))
+    .finally(restore);
 });
 
 $("#logoutButton").addEventListener("click", () => {
