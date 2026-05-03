@@ -1,0 +1,18 @@
+{
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "render.yaml",
+      "RENDER_DEPLOY.md",
+      "server.js",
+      "package.json",
+      "package-lock.json",
+      "db.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "cleanUrls": true,
+    "trailingSlash": false
+  }
+}

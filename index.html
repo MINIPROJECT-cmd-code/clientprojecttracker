@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Client Project Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main id="loginView" class="login-shell">
+      <section class="login-panel">
+        <div>
+          <p class="eyebrow">Workspace</p>
+          <h1>Client Project Tracker</h1>
+        </div>
+        <form id="loginForm" class="form-grid">
+          <label>
+            Email
+            <input id="loginEmail" type="email" placeholder="you@example.com" required>
+          </label>
+          <label>
+            Password
+            <input id="loginPassword" type="password" placeholder="Any password" required>
+          </label>
+          <button class="primary-button" type="submit">Log in</button>
+          <p class="auth-link-row">Don't have an account? <button id="showSignup" class="link-button" type="button">Signup</button></p>
+        </form>
+        <form id="signupForm" class="form-grid hidden">
+          <label>
+            Name
+            <input id="signupName" placeholder="Your name" required>
+          </label>
+          <label>
+            Email
+            <input id="signupEmail" type="email" placeholder="you@example.com" required>
+          </label>
+          <label>
+            Password
+            <input id="signupPassword" type="password" placeholder="Create a password" minlength="4" required>
+          </label>
+          <button class="primary-button" type="submit">Create account</button>
+          <p class="auth-link-row">Already have an account? <button id="showLogin" class="link-button" type="button">Login</button></p>
+        </form>
+      </section>
+    </main>
+
+    <main id="appView" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="sidebar-top">
+          <div>
+            <p class="eyebrow">Dashboard</p>
+            <h2>ProjectFlow</h2>
+          </div>
+          <div id="userProfile" class="user-profile"></div>
+        </div>
+        <nav class="nav-tabs" aria-label="Modules">
+          <button class="nav-button active" data-tab="overview">Overview</button>
+          <button class="nav-button" data-tab="clients">Clients</button>
+          <button class="nav-button" data-tab="projects">Projects</button>
+          <button class="nav-button" data-tab="tasks">Tasks</button>
+          <button class="nav-button" data-tab="payments">Payments</button>
+          <button class="nav-button" data-tab="deadlines">Deadlines</button>
+        </nav>
+        <button id="logoutButton" class="ghost-button" type="button">Log out</button>
+      </aside>
+
+      <section class="content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="todayLabel"></p>
+            <h1 id="pageTitle">Overview</h1>
+          </div>
+        </header>
+
+        <section id="overview" class="tab-panel">
+          <div class="metric-grid">
+            <article class="metric-card">
+              <span id="clientCount">0</span>
+              <p>Clients</p>
+            </article>
+            <article class="metric-card">
+              <span id="projectCount">0</span>
+              <p>Projects</p>
+            </article>
+            <article class="metric-card">
+              <span id="taskCount">0</span>
+              <p>Open tasks</p>
+            </article>
+            <article class="metric-card">
+              <span id="paymentTotal">$0</span>
+              <p>Payments received</p>
+            </article>
+          </div>
+          <div id="chartGrid" class="chart-grid"></div>
+          <div class="split-layout">
+            <section>
+              <div class="section-heading">
+                <h2>Active Projects</h2>
+              </div>
+              <div id="overviewProjects" class="list-stack"></div>
+            </section>
+            <section>
+              <div class="section-heading">
+                <h2>Upcoming Deadlines</h2>
+              </div>
+              <div id="overviewDeadlines" class="list-stack"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="clients" class="tab-panel hidden">
+          <div class="tool-row">
+            <input id="clientSearch" data-filter="clientSearch" placeholder="Search clients">
+            <button class="secondary-button" type="button" data-export="clients">Export CSV</button>
+          </div>
+          <form id="clientForm" class="module-form">
+            <input id="clientName" placeholder="Client name" required>
+            <input id="clientEmail" type="email" placeholder="Email" required>
+            <input id="clientPhone" placeholder="Phone">
+            <button class="primary-button" type="submit">Add client</button>
+          </form>
+          <div id="clientList" class="list-stack"></div>
+        </section>
+
+        <section id="projects" class="tab-panel hidden">
+          <div class="tool-row">
+            <input id="projectSearch" data-filter="projectSearch" placeholder="Search projects">
+            <select id="projectClientFilter" data-filter="projectClientFilter"></select>
+            <button class="secondary-button" type="button" data-export="projects">Export CSV</button>
+          </div>
+          <form id="projectForm" class="module-form">
+            <input id="projectName" placeholder="Project name" required>
+            <select id="projectClient" required></select>
+            <input id="projectBudget" type="number" min="0" step="100" placeholder="Budget">
+            <input id="projectDue" type="date" required>
+            <input id="projectNotes" placeholder="Project notes">
+            <button class="primary-button" type="submit">Add project</button>
+          </form>
+          <div id="projectList" class="list-stack"></div>
+        </section>
+
+        <section id="projectDetail" class="tab-panel hidden">
+          <button id="backToProjects" class="secondary-button compact-button" type="button">Back to projects</button>
+          <div id="projectDetailContent" class="detail-shell"></div>
+        </section>
+
+        <section id="tasks" class="tab-panel hidden">
+          <div class="tool-row">
+            <input id="taskSearch" data-filter="taskSearch" placeholder="Search tasks">
+            <select id="taskStatusFilter" data-filter="taskStatusFilter">
+              <option value="">All statuses</option>
+              <option>Pending</option>
+              <option>In Progress</option>
+              <option>Done</option>
+            </select>
+            <button class="secondary-button" type="button" data-export="tasks">Export CSV</button>
+          </div>
+          <form id="taskForm" class="module-form">
+            <input id="taskTitle" placeholder="Task title" required>
+            <select id="taskProject" required></select>
+            <select id="taskStatus">
+              <option>Pending</option>
+              <option>In Progress</option>
+              <option>Done</option>
+            </select>
+            <input id="taskDue" type="date" required>
+            <button class="primary-button" type="submit">Add task</button>
+          </form>
+          <div id="taskList" class="list-stack"></div>
+        </section>
+
+        <section id="payments" class="tab-panel hidden">
+          <div class="tool-row">
+            <input id="paymentSearch" data-filter="paymentSearch" placeholder="Search invoices or projects">
+            <select id="paymentStatusFilter" data-filter="paymentStatusFilter">
+              <option value="">All statuses</option>
+              <option>Pending</option>
+              <option>Received</option>
+              <option>Overdue</option>
+            </select>
+            <button class="secondary-button" type="button" data-export="payments">Export CSV</button>
+          </div>
+          <form id="paymentForm" class="module-form">
+            <select id="paymentProject" required></select>
+            <input id="paymentInvoice" placeholder="Invoice no.">
+            <input id="paymentAmount" type="number" min="1" step="1" placeholder="Amount" required>
+            <input id="paymentPaid" type="number" min="0" step="1" placeholder="Paid">
+            <select id="paymentMethod">
+              <option>Bank Transfer</option>
+              <option>Cash</option>
+              <option>Card</option>
+              <option>UPI</option>
+              <option>Other</option>
+            </select>
+            <select id="paymentStatus">
+              <option>Pending</option>
+              <option>Received</option>
+              <option>Overdue</option>
+            </select>
+            <input id="paymentDate" type="date" required>
+            <button class="primary-button" type="submit">Add payment</button>
+          </form>
+          <div id="paymentList" class="list-stack"></div>
+        </section>
+
+        <section id="deadlines" class="tab-panel hidden">
+          <div class="tool-row">
+            <input id="deadlineSearch" data-filter="deadlineSearch" placeholder="Search deadlines">
+            <select id="deadlinePriorityFilter" data-filter="deadlinePriorityFilter">
+              <option value="">All priorities</option>
+              <option>Normal</option>
+              <option>High</option>
+              <option>Critical</option>
+            </select>
+          </div>
+          <form id="deadlineForm" class="module-form">
+            <input id="deadlineTitle" placeholder="Deadline title" required>
+            <select id="deadlineProject" required></select>
+            <input id="deadlineDate" type="date" required>
+            <select id="deadlinePriority">
+              <option>Normal</option>
+              <option>High</option>
+              <option>Critical</option>
+            </select>
+            <button class="primary-button" type="submit">Add deadline</button>
+          </form>
+          <div id="deadlineList" class="list-stack"></div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="editModal" class="edit-modal">
+      <form id="editForm" method="dialog" class="edit-panel">
+        <div class="item-row">
+          <div>
+            <p class="eyebrow">Edit</p>
+            <h2 id="editTitle">Record</h2>
+          </div>
+          <button id="closeEdit" class="secondary-button icon-button" type="button">x</button>
+        </div>
+        <div id="editFields" class="edit-fields"></div>
+        <div class="modal-actions">
+          <button class="secondary-button" type="button" id="cancelEdit">Cancel</button>
+          <button class="primary-button" type="submit">Save changes</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

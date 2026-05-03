@@ -1,0 +1,20 @@
+{
+  "user": {
+    "name": "hi",
+    "email": "hi@gmail.com"
+  },
+  "users": [
+    {
+      "id": "c88b05f7-901a-470d-afab-004d086c30a0",
+      "name": "hi",
+      "email": "hi@gmail.com",
+      "passwordSalt": "2e5f1909a2b06228c4de449fada78d7b",
+      "passwordHash": "45232e9c4fe7f0016f8184bffd2b24279bf8d3a984d7b4813ecb1a04aae600516ffb68e41390c4c3214472d0c0e896b8a6d1aac5ef354352963f53be61e9bf7e"
+    }
+  ],
+  "clients": [],
+  "projects": [],
+  "tasks": [],
+  "payments": [],
+  "deadlines": []
+}
