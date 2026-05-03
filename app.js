@@ -898,22 +898,44 @@ function deleteBy(collection, itemId) {
 function cascadeDeleteClient(clientId) {
   if (!confirmDelete("client and its related projects")) return false;
   const projectIds = state.projects.filter((project) => project.clientId === clientId).map((project) => project.id);
+  const taskIds = state.tasks.filter((task) => projectIds.includes(task.projectId)).map(t => t.id);
+  
   if (projectIds.includes(selectedProjectId)) selectedProjectId = null;
   deleteBy("clients", clientId);
   state.projects = state.projects.filter((project) => project.clientId !== clientId);
   state.tasks = state.tasks.filter((task) => !projectIds.includes(task.projectId));
   state.payments = state.payments.filter((payment) => !projectIds.includes(payment.projectId));
   state.deadlines = state.deadlines.filter((deadline) => !projectIds.includes(deadline.projectId));
+  state.timeLogs = state.timeLogs.filter((log) => !taskIds.includes(log.taskId));
+  state.attachments = state.attachments.filter((att) => 
+    !(att.entityType === 'project' && projectIds.includes(att.entityId)) &&
+    !(att.entityType === 'task' && taskIds.includes(att.entityId))
+  );
   return true;
 }
 
 function cascadeDeleteProject(projectId) {
   if (!confirmDelete("project and its related records")) return false;
+  const taskIds = state.tasks.filter((task) => task.projectId === projectId).map(t => t.id);
+  
   if (selectedProjectId === projectId) selectedProjectId = null;
   deleteBy("projects", projectId);
   state.tasks = state.tasks.filter((task) => task.projectId !== projectId);
   state.payments = state.payments.filter((payment) => payment.projectId !== projectId);
   state.deadlines = state.deadlines.filter((deadline) => deadline.projectId !== projectId);
+  state.timeLogs = state.timeLogs.filter((log) => !taskIds.includes(log.taskId));
+  state.attachments = state.attachments.filter((att) => 
+    !(att.entityType === 'project' && att.entityId === projectId) &&
+    !(att.entityType === 'task' && taskIds.includes(att.entityId))
+  );
+  return true;
+}
+
+function cascadeDeleteTask(taskId) {
+  if (!confirmDelete("task and its time logs")) return false;
+  deleteBy("tasks", taskId);
+  state.timeLogs = state.timeLogs.filter((log) => log.taskId !== taskId);
+  state.attachments = state.attachments.filter((att) => !(att.entityType === 'task' && att.entityId === taskId));
   return true;
 }
 
@@ -1210,7 +1232,7 @@ function handleActions(event) {
   if (action === "editDeadline") return openEdit("deadline", itemId);
   if (action === "deleteClient") changed = cascadeDeleteClient(itemId);
   if (action === "deleteProject") changed = cascadeDeleteProject(itemId);
-  if (action === "deleteTask") changed = confirmDelete("task") && (deleteBy("tasks", itemId), true);
+  if (action === "deleteTask") changed = cascadeDeleteTask(itemId);
   if (action === "deletePayment") changed = confirmDelete("payment") && (deleteBy("payments", itemId), true);
   if (action === "deleteDeadline") changed = confirmDelete("deadline") && (deleteBy("deadlines", itemId), true);
   if (action === "deleteTimelog") changed = confirmDelete("time log") && (deleteBy("timeLogs", itemId), true);
@@ -1263,6 +1285,16 @@ function handleFilterInput(event) {
   if (!key) return;
   filters[key] = event.target.value;
   render();
+}
+
+function logout() {
+  postApi(`${API_BASE_URL}/api/logout`)
+    .then(() => {
+      localStorage.removeItem("theme");
+      document.body.classList.remove("dark-theme");
+      showLogin();
+    })
+    .catch((error) => alert(error.message));
 }
 
 $("#loginForm").addEventListener("submit", (event) => {

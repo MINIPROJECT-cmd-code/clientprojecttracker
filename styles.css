@@ -63,8 +63,8 @@ textarea {
 
 .login-panel {
   width: min(460px, 100%);
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.58);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow);
   padding: 32px;
