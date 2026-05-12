@@ -1,7 +1,9 @@
 const http = require("http");
 const crypto = require("crypto");
 const fs = require("fs");
+const net = require("net");
 const path = require("path");
+const tls = require("tls");
 
 function loadEnvFile() {
   const envPath = path.join(__dirname, ".env");
@@ -26,6 +28,14 @@ const DB_FILE = path.join(ROOT, "db.json");
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "app_state";
+const EMAIL_PROVIDER = (process.env.EMAIL_PROVIDER || "auto").toLowerCase();
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const SMTP_FROM = process.env.SMTP_FROM || process.env.EMAIL_FROM;
+const SMTP_SECURE = String(process.env.SMTP_SECURE || "").toLowerCase() === "true";
+const SMTP_STARTTLS = String(process.env.SMTP_STARTTLS || "true").toLowerCase() !== "false";
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM = process.env.RESEND_FROM;
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
@@ -187,8 +197,150 @@ function appBaseUrl(request) {
   return APP_URL;
 }
 
-async function sendEmail(toOriginal, subject, html) {
-  const to = process.env.RESEND_TEST_EMAIL || "a1drivegdrive@gmail.com";
+function normalizeRecipients(to) {
+  return (Array.isArray(to) ? to : [to])
+    .flatMap((entry) => String(entry || "").split(","))
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function emailAddress(value) {
+  const match = String(value || "").match(/<([^>]+)>/);
+  return (match ? match[1] : value).trim();
+}
+
+function stripHtml(value) {
+  return String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
+function smtpRead(socket) {
+  return new Promise((resolve, reject) => {
+    let buffer = "";
+    const onData = (chunk) => {
+      buffer += chunk.toString("utf8");
+      const lines = buffer.split(/\r?\n/).filter(Boolean);
+      const last = lines[lines.length - 1] || "";
+      if (/^\d{3} /.test(last)) {
+        socket.off("data", onData);
+        socket.off("error", onError);
+        resolve(buffer);
+      }
+    };
+    const onError = (error) => {
+      socket.off("data", onData);
+      reject(error);
+    };
+    socket.on("data", onData);
+    socket.once("error", onError);
+  });
+}
+
+async function smtpCommand(socket, line, expected) {
+  if (line) socket.write(`${line}\r\n`);
+  const response = await smtpRead(socket);
+  const code = Number(response.slice(0, 3));
+  const allowed = Array.isArray(expected) ? expected : [expected];
+  if (!allowed.includes(code)) {
+    throw new Error(response.trim());
+  }
+  return response;
+}
+
+function smtpConnect(secure) {
+  const options = { host: SMTP_HOST, port: SMTP_PORT, servername: SMTP_HOST, timeout: 15000 };
+  return new Promise((resolve, reject) => {
+    const socket = secure ? tls.connect(options, () => resolve(socket)) : net.connect(options, () => resolve(socket));
+    socket.once("error", reject);
+    socket.once("timeout", () => {
+      socket.destroy();
+      reject(new Error("SMTP connection timed out"));
+    });
+  });
+}
+
+async function sendSmtpEmail(to, subject, html) {
+  if (!SMTP_HOST) return { ok: false, skipped: true, reason: "SMTP_HOST is not configured" };
+  if (!SMTP_FROM) return { ok: false, skipped: true, reason: "SMTP_FROM or EMAIL_FROM is not configured" };
+
+  const recipients = normalizeRecipients(to);
+  if (!recipients.length) return { ok: false, skipped: true, reason: "No email recipient was provided" };
+
+  let socket = await smtpConnect(SMTP_SECURE || SMTP_PORT === 465);
+  try {
+    await smtpCommand(socket, null, 220);
+    let hello = await smtpCommand(socket, `EHLO ${SMTP_HOST}`, 250);
+
+    if (!(SMTP_SECURE || SMTP_PORT === 465) && SMTP_STARTTLS && /STARTTLS/i.test(hello)) {
+      await smtpCommand(socket, "STARTTLS", 220);
+      socket = await new Promise((resolve, reject) => {
+        const secureSocket = tls.connect({ socket, servername: SMTP_HOST }, () => resolve(secureSocket));
+        secureSocket.once("error", reject);
+      });
+      hello = await smtpCommand(socket, `EHLO ${SMTP_HOST}`, 250);
+    }
+
+    if (SMTP_USER || SMTP_PASS) {
+      if (!SMTP_USER || !SMTP_PASS) {
+        throw new Error("Both SMTP_USER and SMTP_PASS are required for SMTP authentication");
+      }
+      await smtpCommand(socket, "AUTH LOGIN", 334);
+      await smtpCommand(socket, Buffer.from(SMTP_USER).toString("base64"), 334);
+      await smtpCommand(socket, Buffer.from(SMTP_PASS).toString("base64"), 235);
+    }
+
+    const boundary = `projectflow-${crypto.randomBytes(12).toString("hex")}`;
+    const messageId = `<${crypto.randomUUID()}@projectflow.local>`;
+    const plainText = stripHtml(html);
+    const headers = [
+      `From: ${SMTP_FROM}`,
+      `To: ${recipients.join(", ")}`,
+      `Subject: ${subject}`,
+      `Message-ID: ${messageId}`,
+      "MIME-Version: 1.0",
+      `Content-Type: multipart/alternative; boundary="${boundary}"`
+    ].join("\r\n");
+    const message = [
+      headers,
+      "",
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=utf-8",
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      plainText,
+      "",
+      `--${boundary}`,
+      "Content-Type: text/html; charset=utf-8",
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      html,
+      "",
+      `--${boundary}--`
+    ].join("\r\n").replace(/^\./gm, "..");
+
+    await smtpCommand(socket, `MAIL FROM:<${emailAddress(SMTP_FROM)}>`, 250);
+    for (const recipient of recipients) {
+      await smtpCommand(socket, `RCPT TO:<${emailAddress(recipient)}>`, [250, 251]);
+    }
+    await smtpCommand(socket, "DATA", 354);
+    await smtpCommand(socket, `${message}\r\n.`, 250);
+    socket.write("QUIT\r\n");
+    return { ok: true, id: messageId, provider: "smtp" };
+  } finally {
+    socket.end();
+  }
+}
+
+async function sendResendEmail(to, subject, html) {
   if (!RESEND_API_KEY) {
     return { ok: false, skipped: true, reason: "RESEND_API_KEY is not configured" };
   }
@@ -204,7 +356,7 @@ async function sendEmail(toOriginal, subject, html) {
     },
     body: JSON.stringify({
       from: RESEND_FROM,
-      to: Array.isArray(to) ? to : [to],
+      to: normalizeRecipients(to),
       subject,
       html
     })
@@ -219,10 +371,18 @@ async function sendEmail(toOriginal, subject, html) {
   if (!resendResponse.ok) {
     return {
       ok: false,
+      skipped: true,
       reason: resendData.message || resendData.error || "Email provider rejected the message"
     };
   }
-  return { ok: true, id: resendData.id };
+  return { ok: true, id: resendData.id, provider: "resend" };
+}
+
+async function sendEmail(to, subject, html) {
+  if (EMAIL_PROVIDER === "smtp") return sendSmtpEmail(to, subject, html);
+  if (EMAIL_PROVIDER === "resend") return sendResendEmail(to, subject, html);
+  if (SMTP_HOST) return sendSmtpEmail(to, subject, html);
+  return sendResendEmail(to, subject, html);
 }
 
 function sendJson(response, status, data) {
